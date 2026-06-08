@@ -1,0 +1,6 @@
+content = open('io_handlers/export_utils.py', 'r', encoding='utf-8').read()
+content = content.replace("Suc chiu tai cho phep: Pmax = {params.get('P_LIMIT')} kN, Pnho = {params.get('P_TENSION')} kN", "Suc chiu tai cho phep: Po = {params.get('P_LIMIT')} T, Ct = {params.get('P_TENSION')} T")
+content = content.replace("f\"Pmax = {config.get('pmax', 0):.2f} kN\"", "f\"Pmax = {config.get('pmax', 0):.2f} T\"")
+content = content.replace("f\"Pmin = {config.get('pmin', 0):.2f} kN\"", "f\"Pmin = {config.get('pmin', 0):.2f} T\"")
+open('io_handlers/export_utils.py', 'w', encoding='utf-8').write(content)
+print('Done')

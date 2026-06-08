@@ -1,0 +1,11 @@
+# Ignore generated and data files
+__pycache__/
+*.py[cod]
+*.mp4
+*.csv
+*.pdf
+*.txt
+*.xlsx
+Mcoc_test/
+.DS_Store
+
