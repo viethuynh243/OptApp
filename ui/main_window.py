@@ -6,6 +6,28 @@ from core.mechanics import check_layout
 from core.generator import generate_coords
 from io_handlers.file_io import parse_input_file, export_output_file
 from ui.plot_canvas import PlotCanvas
+import unicodedata
+import re as _re
+
+
+def to_safe_filename(text: str) -> str:
+    """
+    Chuyển chuỗi tiếng Việt (có dấu) sang tên file an toàn (ASCII, không dấu).
+    Ví dụ:
+        'Phương án đề xuất' -> 'Phuong_an_de_xuat'
+        'Kết quả Tối Ưu' -> 'Ket_qua_Toi_uu'
+    """
+    # Bước 1: chuẩn hóa Unicode NFD — tách dấu ra khỏi ký tự cơ sở
+    nfd = unicodedata.normalize('NFD', text)
+    # Bước 2: loại bỏ các combining diacritical marks (category Mn)
+    ascii_approx = ''.join(c for c in nfd if unicodedata.category(c) != 'Mn')
+    # Bước 3: xử lý riêng đ/Đ (không phải combining, phải xử lý trước)
+    ascii_approx = ascii_approx.replace('đ', 'd').replace('Đ', 'D')
+    # Bước 4: thay khoảng trắng bằng gạch dưới, xóa ký tự đặc biệt
+    safe = _re.sub(r'[^A-Za-z0-9_\-]', '_', ascii_approx)
+    # Bước 5: rút gọn nhiều gạch dưới liên tiếp
+    safe = _re.sub(r'_+', '_', safe).strip('_')
+    return safe
 
 class MainWindow:
     def __init__(self, root):
@@ -24,6 +46,8 @@ class MainWindow:
             'exe_path': tk.StringVar(value=''),
             'mock_mode': tk.BooleanVar(value=True)
         }
+        # Cờ xuất file (chỉ dùng trong save_file)
+        self.var_export_cti = tk.BooleanVar(value=False)
         
         self.loads = []
         self.current_config = None
@@ -73,16 +97,14 @@ class MainWindow:
         labels_1 = {"L_X": "Rộng bệ Lx (m)", "L_Y": "Dài bệ Ly (m)",
                     "D_PILE": "Đ.kính cọc d (m)", "P_LIMIT": "Sức nén [Po] (T)",
                     "P_TENSION": "Sức nhổ [Ct] (T)", "M_LIMIT": "Sức uốn [M] (T.m)"}
-                  
+        self._param_entries = {}      
         row = 0
         col = 0
         for k, text in labels_1.items():
             ttk.Label(frame_geom, text=text).grid(row=row, column=col*2, sticky="w", padx=2)
             entry = ttk.Entry(frame_geom, textvariable=self.params[k], width=10)
             entry.grid(row=row, column=col*2+1, pady=2, padx=2)
-            if k in ["L_X", "L_Y"]:
-                entry.config(state="readonly")
-            
+            self._param_entries[k] = entry
             row += 1
             if row > 2:
                 row = 0
@@ -92,20 +114,38 @@ class MainWindow:
         frame_loads = tk.LabelFrame(tab_params, text="Tổ hợp Tải trọng", padx=10, pady=5)
         frame_loads.pack(fill=tk.BOTH, expand=True, pady=5)
         
-        self.tree_loads = ttk.Treeview(frame_loads, columns=("Hx", "Hy", "P", "Mx", "My", "Mz"), show="headings", height=5)
-        self.tree_loads.heading("Hx", text="Hx (kN)")
-        self.tree_loads.heading("Hy", text="Hy (kN)")
-        self.tree_loads.heading("P", text="P (kN)")
-        self.tree_loads.heading("Mx", text="Mx (kNm)")
-        self.tree_loads.heading("My", text="My (kNm)")
-        self.tree_loads.heading("Mz", text="Mz (kNm)")
-        self.tree_loads.column("Hx", width=50)
-        self.tree_loads.column("Hy", width=50)
-        self.tree_loads.column("P", width=50)
-        self.tree_loads.column("Mx", width=50)
-        self.tree_loads.column("My", width=50)
-        self.tree_loads.column("Mz", width=50)
-        self.tree_loads.pack(fill=tk.BOTH, expand=True)
+        cols = ("TH", "Hx", "Hy", "P", "Mx", "My", "Mz")
+        self.tree_loads = ttk.Treeview(frame_loads, columns=cols, show="headings", height=5)
+        col_cfg = {
+            "TH":  ("#",       35),
+            "Hx":  ("Hx(kN)",  60),
+            "Hy":  ("Hy(kN)",  60),
+            "P":   ("P(kN)",   65),
+            "Mx":  ("Mx(kNm)", 70),
+            "My":  ("My(kNm)", 70),
+            "Mz":  ("Mz(kNm)", 70),
+        }
+        for c, (hdr, w) in col_cfg.items():
+            self.tree_loads.heading(c, text=hdr)
+            self.tree_loads.column(c, width=w, anchor="e")
+        self.tree_loads.column("TH", anchor="center")
+        
+        # Scrollbar
+        sb_loads = ttk.Scrollbar(frame_loads, orient="vertical", command=self.tree_loads.yview)
+        self.tree_loads.configure(yscrollcommand=sb_loads.set)
+        self.tree_loads.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb_loads.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Double-click để sửa
+        self.tree_loads.bind("<Double-1>", lambda e: self.edit_load())
+        
+        # Nút CRUD tải trọng
+        frame_load_btns = tk.Frame(tab_params)
+        frame_load_btns.pack(fill=tk.X, pady=(0, 3))
+        ttk.Button(frame_load_btns, text="+ Thêm tổ hợp",  command=self.add_load_dialog).pack(side=tk.LEFT, padx=2)
+        ttk.Button(frame_load_btns, text="✎ Sửa chọn",    command=self.edit_load).pack(side=tk.LEFT, padx=2)
+        ttk.Button(frame_load_btns, text="✕ Xóa chọn",    command=self.delete_load).pack(side=tk.LEFT, padx=2)
+        ttk.Button(frame_load_btns, text="Nhập từ CSV",    command=self.paste_loads_csv).pack(side=tk.RIGHT, padx=2)
         
         # --- ĐIỀU KHIỂN & KẾT QUẢ TỐI ƯU ---
         frame_run = tk.LabelFrame(tab_params, text="Điều Khiển Tối Ưu", padx=10, pady=5)
@@ -151,11 +191,171 @@ class MainWindow:
     def refresh_loads_ui(self):
         for item in self.tree_loads.get_children():
             self.tree_loads.delete(item)
-        for load in self.loads:
+        for i, load in enumerate(self.loads):
             self.tree_loads.insert("", tk.END, values=(
-                load.get('Hx', 0.0), load.get('Hy', 0.0), load.get('N', 0.0), 
+                i + 1,
+                load.get('Hx', 0.0), load.get('Hy', 0.0), load.get('N', 0.0),
                 load.get('Mx', 0.0), load.get('My', 0.0), load.get('Mz', 0.0)
             ))
+
+    # ── Nhập liệu tải trọng thủ công ──────────────────────────────────────
+
+    def _load_dialog(self, title, init=None):
+        """Hộp thoại nhập / sửa 1 tổ hợp tải trọng.
+        Trả về dict hoặc None nếu hủy.
+        """
+        dlg = tk.Toplevel(self.root)
+        dlg.title(title)
+        dlg.resizable(False, False)
+        dlg.grab_set()          # Modal
+        dlg.transient(self.root)
+
+        fields = [
+            ("Hx (kN) — lực ngang X",  "Hx",  0.0),
+            ("Hy (kN) — lực ngang Y",  "Hy",  0.0),
+            ("P  (kN) — lực đứng",     "N",   0.0),
+            ("Mx (kNm) — momen trục X","Mx",  0.0),
+            ("My (kNm) — momen trục Y","My",  0.0),
+            ("Mz (kNm) — momen xoắn",  "Mz",  0.0),
+        ]
+        vars_ = {}
+        for row_i, (label, key, default) in enumerate(fields):
+            ttk.Label(dlg, text=label, width=26, anchor="w").grid(
+                row=row_i, column=0, padx=10, pady=4, sticky="w")
+            v = tk.StringVar(value=str(init.get(key, default)) if init else str(default))
+            vars_[key] = v
+            ttk.Entry(dlg, textvariable=v, width=14).grid(
+                row=row_i, column=1, padx=10, pady=4)
+
+        result = [None]
+
+        def on_ok():
+            try:
+                d = {k: float(v.get()) for k, v in vars_.items()}
+                result[0] = d
+                dlg.destroy()
+            except ValueError:
+                messagebox.showerror("Lỗi", "Vui lòng nhập số hợp lệ cho tất cả các trường.", parent=dlg)
+
+        btn_frame = tk.Frame(dlg)
+        btn_frame.grid(row=len(fields), column=0, columnspan=2, pady=8)
+        ttk.Button(btn_frame, text="  OK  ", command=on_ok).pack(side=tk.LEFT, padx=6)
+        ttk.Button(btn_frame, text="Hủy",   command=dlg.destroy).pack(side=tk.LEFT, padx=6)
+
+        dlg.wait_window()
+        return result[0]
+
+    def add_load_dialog(self):
+        """Thêm tổ hợp tải trọng mới qua hộp thoại."""
+        d = self._load_dialog("Thêm tổ hợp tải trọng")
+        if d is not None:
+            self.loads.append(d)
+            self.refresh_loads_ui()
+
+    def edit_load(self):
+        """Sửa tổ hợp tải trọng đang chọn."""
+        sel = self.tree_loads.selection()
+        if not sel:
+            messagebox.showinfo("Thông báo", "Vui lòng chọn một tổ hợp để sửa.")
+            return
+        idx = self.tree_loads.index(sel[0])
+        d = self._load_dialog(f"Sửa tổ hợp {idx + 1}", init=self.loads[idx])
+        if d is not None:
+            self.loads[idx] = d
+            self.refresh_loads_ui()
+
+    def delete_load(self):
+        """Xóa các tổ hợp tải trọng đang chọn."""
+        sel = self.tree_loads.selection()
+        if not sel:
+            messagebox.showinfo("Thông báo", "Vui lòng chọn tổ hợp cần xóa.")
+            return
+        if not messagebox.askyesno("Xác nhận", f"Xóa {len(sel)} tổ hợp đã chọn?"):
+            return
+        idxs = sorted([self.tree_loads.index(s) for s in sel], reverse=True)
+        for i in idxs:
+            self.loads.pop(i)
+        self.refresh_loads_ui()
+
+    def paste_loads_csv(self):
+        """Nhập nhiều tổ hợp từ văn bản CSV dán vào (clipboard hoặc text area)."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Nhập tải trọng từ văn bản CSV")
+        dlg.geometry("560x360")
+        dlg.grab_set()
+        dlg.transient(self.root)
+
+        tk.Label(
+            dlg,
+            text="Dán dữ liệu CSV (mỗi dòng = 1 tổ hợp):\n"
+                 "Format: Hx, Hy, P, Mx, My, Mz\n"
+                 "(Có thể bỏ qua Hx/Hy/Mz — mặc định = 0)",
+            justify="left", anchor="w"
+        ).pack(fill=tk.X, padx=10, pady=(8, 2))
+
+        txt = tk.Text(dlg, height=12, font=("Consolas", 10))
+        txt.pack(fill=tk.BOTH, expand=True, padx=10, pady=4)
+
+        # Thử dán từ clipboard
+        try:
+            clip = dlg.clipboard_get()
+            if clip.strip():
+                txt.insert("1.0", clip)
+        except Exception:
+            pass
+
+        # Mẫu gợi ý
+        hint = "Ví dụ:\n0, 0, 2577, 1500, 1500, 0\n0, 0, 2400, 800, 2000, 0"
+        txt.insert("end", "\n" + hint)
+
+        var_replace = tk.BooleanVar(value=False)
+        tk.Checkbutton(dlg, text="Thay thế toàn bộ (bỏ check = gộp thêm vào)",
+                       variable=var_replace).pack(anchor="w", padx=10)
+
+        def on_import():
+            raw = txt.get("1.0", "end")
+            new_loads = []
+            errors = []
+            for line_no, line in enumerate(raw.splitlines(), 1):
+                line = line.strip()
+                if not line or line.startswith("#") or line.startswith("Ví") or line.startswith("Vi"):
+                    continue
+                parts = [p.strip() for p in line.replace(';', ',').split(',')]
+                try:
+                    vals = [float(p) for p in parts if p != '']
+                    if len(vals) == 3:
+                        new_loads.append({'Hx':0,'Hy':0,'N':vals[0],'Mx':vals[1],'My':vals[2],'Mz':0})
+                    elif len(vals) == 5:
+                        new_loads.append({'Hx':0,'Hy':0,'N':vals[0],'Mx':vals[1],'My':vals[2],'Mz':vals[3],'_extra':vals[4]})
+                    elif len(vals) >= 6:
+                        new_loads.append({'Hx':vals[0],'Hy':vals[1],'N':vals[2],'Mx':vals[3],'My':vals[4],'Mz':vals[5]})
+                    else:
+                        errors.append(f"Dòng {line_no}: cần ≥3 cột, bỏ qua.")
+                except ValueError:
+                    errors.append(f"Dòng {line_no}: không phải số, bỏ qua.")
+
+            if not new_loads:
+                messagebox.showwarning("Cảnh báo", "Không đọc được dòng nào hợp lệ.", parent=dlg)
+                return
+
+            if var_replace.get():
+                self.loads = new_loads
+            else:
+                self.loads.extend(new_loads)
+            self.refresh_loads_ui()
+
+            msg = f"Đã nhập {len(new_loads)} tổ hợp."
+            if errors:
+                msg += "\n" + "\n".join(errors[:5])
+            messagebox.showinfo("Hoàn thành", msg, parent=dlg)
+            dlg.destroy()
+
+        btn_f = tk.Frame(dlg)
+        btn_f.pack(fill=tk.X, padx=10, pady=6)
+        ttk.Button(btn_f, text="  Nhập  ", command=on_import).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_f, text="Hủy", command=dlg.destroy).pack(side=tk.LEFT, padx=4)
+
+        dlg.wait_window()
             
     def get_params_dict(self):
         d = {k: v.get() for k, v in self.params.items()}
@@ -241,12 +441,17 @@ class MainWindow:
             # Reset ket qua cu — du lieu moi, ket qua moi
             self.current_config = None
             self.refresh_loads_ui()
-            
+
+            # Sau khi load file, mở khóa L_X / L_Y để người dùng có thể điều chỉnh
+            for k in ('L_X', 'L_Y'):
+                if k in self._param_entries:
+                    self._param_entries[k].config(state='normal')
+
             # Xóa UI kết quả cũ
             self.txt_result.delete(1.0, tk.END)
             self.cb_config.set('')
             self.cb_config['values'] = []
-            
+
             # Xóa bớt mô phỏng cũ đi, để trống màn hình chờ người dùng ấn Tối Ưu
             self.plot_canvas.draw_simulation([], self.get_params_dict())
 
@@ -267,46 +472,59 @@ class MainWindow:
         if not self.current_config:
             messagebox.showwarning("Cảnh báo", "Chưa có kết quả để xuất. Vui lòng chạy Tối ưu hóa trước.")
             return
-            
-        filepath = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text Files", "*.txt")])
-        if filepath:
-            try:
-                export_output_file(filepath, self.current_config, self.get_params_dict(), self.loads, getattr(self, 'project_name', 'Du An Toi Uu Coc'), self.output_option.get())
-                
-                import os
-                base_dir = os.path.dirname(filepath)
-                base_name = os.path.splitext(os.path.basename(filepath))[0]
-                
-                # Sinh file .cti cho spColumn
-                if self.var_export_cti.get():
-                    cti_path = os.path.join(base_dir, f"{base_name}.cti")
-                    with open(cti_path, 'w', encoding='utf-8') as f:
-                        f.write("# spColumn Text Input (CTI) File - Generated by OptApp\n")
-                        f.write(f"Concrete: {self.cb_concrete.get()}\n")
-                        f.write(f"Rebar_Shape: {self.cb_rebar_shape.get()}\n")
-                        f.write(f"Rebar_Count: {self.spin_rebar_num.get()}\n")
-                        f.write(f"Rebar_Diameter: {self.spin_rebar_d.get()}\n")
-                        f.write(f"Cover: {self.spin_cover.get()}\n\n")
-                        f.write("# TAI TRONG KIEM TOAN (Tu MCOC)\n")
-                        for i, ld in enumerate(self.loads):
-                            f.write(f"Load_Case_{i+1}: N={ld['N']}, Mx={ld['Mx']}, My={ld['My']}\n")
-                            
-                if self.output_option.get() == "ALL":
-                    for name in self.cb_config['values']:
-                        self.cb_config.set(name)
-                        self.update_simulation()
-                        img_name = name.replace(' ', '_').replace('ư', 'u').replace('ơ', 'o').replace('á', 'a').replace('đ', 'd').replace('ề', 'e').replace('ố', 'o').replace('ộ', 'o')
-                        img_path = os.path.join(base_dir, f"{base_name}_{img_name}.png")
-                        self.plot_canvas.fig.savefig(img_path, dpi=300, bbox_inches='tight')
-                else:
-                    self.cb_config.set("Phương án đề xuất")
+
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            initialfile=to_safe_filename(getattr(self, 'project_name', 'Ket_qua_toi_uu')),
+            filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")]
+        )
+        if not filepath:
+            return
+
+        try:
+            import os
+            base_dir  = os.path.dirname(filepath)
+            base_name = os.path.splitext(os.path.basename(filepath))[0]
+
+            # 1. Xuất file TXT kết quả
+            export_output_file(
+                filepath,
+                self.current_config,
+                self.get_params_dict(),
+                self.loads,
+                getattr(self, 'project_name', 'Du An Toi Uu Coc'),
+                self.output_option.get()
+            )
+
+            # 2. Xuất ảnh mặt bằng PNG
+            exported_imgs = []
+            if self.output_option.get() == "ALL":
+                for name in self.cb_config['values']:
+                    self.cb_config.set(name)
                     self.update_simulation()
-                    img_path = os.path.join(base_dir, f"{base_name}_De_xuat.png")
+                    safe = to_safe_filename(name)
+                    img_path = os.path.join(base_dir, f"{base_name}_{safe}.png")
                     self.plot_canvas.fig.savefig(img_path, dpi=300, bbox_inches='tight')
-                    
-                messagebox.showinfo("Thành công", "Đã xuất file text và các bản vẽ mô phỏng thành công!")
-            except Exception as e:
-                messagebox.showerror("Lỗi", f"Không thể xuất file: {str(e)}")
+                    exported_imgs.append(img_path)
+            else:
+                # Luôn vẽ lại phương án đề xuất trước khi lưu
+                if "Phương án đề xuất" in self.cb_config['values']:
+                    self.cb_config.set("Phương án đề xuất")
+                elif self.cb_config['values']:
+                    self.cb_config.current(0)
+                self.update_simulation()
+                img_path = os.path.join(base_dir, f"{base_name}_De_xuat.png")
+                self.plot_canvas.fig.savefig(img_path, dpi=300, bbox_inches='tight')
+                exported_imgs.append(img_path)
+
+            messagebox.showinfo(
+                "Thành công",
+                f"Đã xuất:\n• {os.path.basename(filepath)}\n"
+                + "\n".join(f"• {os.path.basename(p)}" for p in exported_imgs)
+            )
+        except Exception as e:
+            import traceback
+            messagebox.showerror("Lỗi", f"Không thể xuất file: {str(e)}\n\n{traceback.format_exc()[-300:]})")
 
     def run_interactive_sim(self):
         nx = int(self.sim_nx.get())
@@ -671,7 +889,8 @@ class MainWindow:
                 
                 filepath = f['path']
                 filename = os.path.basename(filepath)
-                prefix = filename.split('.')[0]
+                # Chuẩn hóa tên file sang ASCII không dấu để tránh lỗi đường dẫn
+                prefix = to_safe_filename(filename.split('.')[0]) or filename.split('.')[0]
                 
                 self.update_batch_status(i, "Đang chạy...")
                 self.log_batch(f"[{i+1}/{len(self.batch_files)}] Đang xử lý: {filename}")
