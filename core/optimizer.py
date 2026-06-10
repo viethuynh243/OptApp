@@ -62,28 +62,28 @@ def run_optimization(params, loads):
     all_candidates.sort(key=lambda x: (x['n'], x['pmax']))
 
     recommended = None
-    reason = "Không có"
+    reason = "Khong co"
     
     if best_configs['A'] and best_configs['B']:
         if best_configs['B']['n'] < best_configs['A']['n']:
             recommended = best_configs['B']
-            reason = f"Kiểu So le tiết kiệm cọc nhất (chỉ {best_configs['B']['n']} cọc)."
+            reason = f"Kieu So le tiet kiem coc nhat (chi {best_configs['B']['n']} coc)."
         elif best_configs['A']['n'] < best_configs['B']['n']:
             recommended = best_configs['A']
-            reason = f"Kiểu Trực giao tiết kiệm cọc nhất (chỉ {best_configs['A']['n']} cọc)."
+            reason = f"Kieu Truc giao tiet kiem coc nhat (chi {best_configs['A']['n']} coc)."
         else:
             if best_configs['B']['pmax'] < best_configs['A']['pmax']:
                 recommended = best_configs['B']
-                reason = f"Cùng {best_configs['A']['n']} cọc, nhưng kiểu So le có P_max = {best_configs['B']['pmax']:.1f} kN an toàn hơn."
+                reason = f"Cung {best_configs['A']['n']} coc, nhung kieu So le co P_max = {best_configs['B']['pmax']:.1f} T an toan hon."
             else:
                 recommended = best_configs['A']
-                reason = f"Cùng {best_configs['A']['n']} cọc, nhưng kiểu Trực giao có P_max = {best_configs['A']['pmax']:.1f} kN an toàn hơn."
+                reason = f"Cung {best_configs['A']['n']} coc, nhung kieu Truc giao co P_max = {best_configs['A']['pmax']:.1f} T an toan hon."
     elif best_configs['A']:
         recommended = best_configs['A']
-        reason = "Chỉ kiểu Trực giao thỏa mãn điều kiện."
+        reason = "Chi kieu Truc giao thoa man dieu kien."
     elif best_configs['B']:
         recommended = best_configs['B']
-        reason = "Chỉ kiểu So le thỏa mãn điều kiện."
+        reason = "Chi kieu So le thoa man dieu kien."
         
     original_config = None
     if 'original_coords' in params:
@@ -92,9 +92,9 @@ def run_optimization(params, loads):
         orig_ny = 0
         
         # Đánh giá phương án gốc dựa trên RÀNG BUỘC MỚI của người dùng (P_LIMIT, D_PILE hiện tại)
-        ok, pmax, pmin, mxmax, mymax, forces, msg = check_layout(orig_coords, orig_nx, orig_ny, 0, 0, "Gốc", params, loads)
+        ok, pmax, pmin, mxmax, mymax, forces, msg = check_layout(orig_coords, orig_nx, orig_ny, 0, 0, "Goc", params, loads)
         original_config = {
-            'type': 'Gốc',
+            'type': 'Goc',
             'coords': orig_coords,
             'n': len(orig_coords),
             'ok': ok,
@@ -109,7 +109,7 @@ def run_optimization(params, loads):
         # Ưu tiên phương án gốc nếu nó đạt và các phương án lưới không tiết kiệm cọc hơn
         if ok and (recommended is None or recommended['n'] >= len(orig_coords)):
             recommended = {
-                'type': 'Gốc',
+                'type': 'Goc',
                 'nx': 0, 'ny': 0,
                 'sx': 0, 'sy': 0,
                 'n': len(orig_coords),
@@ -120,12 +120,12 @@ def run_optimization(params, loads):
                 'mymax': mymax,
                 'forces': forces,
                 'ok': True,
-                'msg': 'Sử dụng phương án gốc'
+                'msg': 'Su dung phuong an goc'
             }
-            reason = f"Phương án gốc trong file ĐẠT (Pmax={pmax:.1f}T). Các phương án lưới đều không tiết kiệm cọc hơn."
+            reason = f"Phuong an goc trong file DAT (Pmax={pmax:.1f}T). Cac phuong an luoi deu khong tiet kiem coc hon."
         elif recommended is None and not ok:
-            clean_msg = msg.replace("Không đạt: ", "")
-            reason = f"Phương án gốc KHÔNG ĐẠT ({clean_msg}). Cần thay đổi cấu hình đài cọc, móng cọc hoặc giới hạn uốn."
+            clean_msg = msg.replace("Khong dat: ", "")
+            reason = f"Phuong an goc KHONG DAT ({clean_msg}). Can thay doi cau hinh dai coc, mong coc hoac gioi han uon."
         
     return {
         'best_A': best_configs['A'],

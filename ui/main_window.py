@@ -526,57 +526,6 @@ class MainWindow:
             import traceback
             messagebox.showerror("Lỗi", f"Không thể xuất file: {str(e)}\n\n{traceback.format_exc()[-300:]})")
 
-    def run_interactive_sim(self):
-        nx = int(self.sim_nx.get())
-        ny = int(self.sim_ny.get())
-        sx = round(self.sim_sx.get(), 2)
-        sy = round(self.sim_sy.get(), 2)
-        
-        if not self.loads:
-            self.lbl_sim_status.config(text="CHƯA CÓ TẢI TRỌNG", fg="gray")
-            return
-            
-        layout = self.sim_layout.get()
-        coords = generate_coords(nx, ny, sx, sy, layout)
-        n_piles = len(coords)
-        
-        ok, pmax, pmin, forces, msg = check_layout(coords, nx, ny, sx, sy, layout, self.get_params_dict(), self.loads)
-        
-        self.lbl_sim_status.config(text="ĐẠT (TỐT)" if ok else "KHÔNG ĐẠT", fg="#27ae60" if ok else "#e74c3c")
-        
-        self.txt_sim_result.delete(1.0, tk.END)
-        self.txt_sim_result.insert(tk.END, f"Số lượng cọc: {n_piles}\n")
-        self.txt_sim_result.insert(tk.END, f"Pmax = {pmax:.1f} kN\n")
-        self.txt_sim_result.insert(tk.END, f"Pmin = {pmin:.1f} kN\n")
-        self.txt_sim_result.insert(tk.END, f"Thông báo: {msg}\n")
-        
-        # Determine the selected load case index for forces visualization
-        idx_load = 0
-        if self.cb_load_case.get().startswith("Tổ hợp"):
-            try:
-                idx_load = int(self.cb_load_case.get().split()[2]) - 1
-            except: pass
-            
-        # Recalculate forces for the specific load case for heatmap
-        load = self.loads[idx_load]
-        N, Mx, My = load.get('N', 0), load.get('Mx', 0), load.get('My', 0)
-        import numpy as np
-        cg_x, cg_y = np.mean(coords[:, 0]), np.mean(coords[:, 1])
-        I_x = np.sum((coords[:, 1] - cg_y)**2)
-        I_y = np.sum((coords[:, 0] - cg_x)**2)
-        I_x = I_x if I_x > 0 else 1e-9
-        I_y = I_y if I_y > 0 else 1e-9
-        Mx_cg = Mx - N * cg_y
-        My_cg = My - N * cg_x
-        sim_forces = []
-        for (x, y) in coords:
-            dx = x - cg_x
-            dy = y - cg_y
-            p = N/n_piles + Mx_cg * dy / I_x + My_cg * dx / I_y
-            sim_forces.append(p)
-            
-        self.plot_canvas.draw_simulation(coords, self.get_params_dict(), sim_forces)
-
     def run_optimize(self):
         self.txt_result.delete(1.0, tk.END)
         self.txt_result.insert(tk.END, "Dang tim kiem...\n")
@@ -595,8 +544,8 @@ class MainWindow:
             status = "DAT" if orig['ok'] else "KHONG DAT"
             self.txt_result.insert(tk.END, f"=== PHUONG AN GOC TRONG FILE ({status}) ===\n")
             self.txt_result.insert(tk.END, f"  So coc: {orig['n']}\n")
-            self.txt_result.insert(tk.END, f"  Pmax = {orig['pmax']:.2f} kN  (Gioi han: {P_LIMIT:.0f} kN)\n")
-            self.txt_result.insert(tk.END, f"  Pmin = {orig['pmin']:.2f} kN  (Gioi han chiu nho: -{P_TENSION:.0f} kN)\n")
+            self.txt_result.insert(tk.END, f"  Pmax = {orig['pmax']:.2f} T  (Gioi han: {P_LIMIT:.0f} T)\n")
+            self.txt_result.insert(tk.END, f"  Pmin = {orig['pmin']:.2f} T  (Gioi han chiu nho: -{P_TENSION:.0f} T)\n")
             mmax_orig = max(orig.get('mxmax',0), orig.get('mymax',0))
             if self.params['M_LIMIT'].get() > 0:
                 self.txt_result.insert(tk.END, f"  Mmax = {mmax_orig:.2f} T.m  (Gioi han uon: {self.params['M_LIMIT'].get():.0f} T.m)\n")
@@ -640,8 +589,8 @@ class MainWindow:
                 type_str = "Truc giao" if rec['type'] == 'A' else "So le"
                 self.txt_result.insert(tk.END, f"  >> Kieu {rec['type']} ({type_str}): {rec['nx']}x{rec['ny']} = {rec['n']} coc\n")
                 self.txt_result.insert(tk.END, f"     sx = {rec['sx']:.2f} m, sy = {rec['sy']:.2f} m\n")
-            self.txt_result.insert(tk.END, f"     Pmax = {rec['pmax']:.2f} kN\n")
-            self.txt_result.insert(tk.END, f"     Pmin = {rec['pmin']:.2f} kN\n")
+            self.txt_result.insert(tk.END, f"     Pmax = {rec['pmax']:.2f} T\n")
+            self.txt_result.insert(tk.END, f"     Pmin = {rec['pmin']:.2f} T\n")
             if self.params['M_LIMIT'].get() > 0:
                 self.txt_result.insert(tk.END, f"     Mmax = {max(rec.get('mxmax',0), rec.get('mymax',0)):.2f} T.m\n")
             else:
@@ -750,207 +699,459 @@ class MainWindow:
     # ================= BATCH MODE =================
 
     def setup_batch_ui(self, parent_frame):
-        # Frame Top: Danh sách file
-        frame_list = tk.LabelFrame(parent_frame, text="Dữ liệu đầu vào", padx=10, pady=10)
-        frame_list.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        columns = ("STT", "Tên file", "Thư mục", "Trạng thái")
-        self.tree_batch = ttk.Treeview(frame_list, columns=columns, show="headings", height=10)
-        self.tree_batch.heading("STT", text="#")
-        self.tree_batch.heading("Tên file", text="Tên file")
-        self.tree_batch.heading("Thư mục", text="Thư mục")
-        self.tree_batch.heading("Trạng thái", text="Trạng thái")
-        self.tree_batch.column("STT", width=50, anchor='center')
-        self.tree_batch.column("Tên file", width=200)
-        self.tree_batch.column("Thư mục", width=400)
-        self.tree_batch.column("Trạng thái", width=150, anchor='center')
+        """Giao di\u1ec7n Tab 2 \u2014 thi\u1ebft k\u1ebf theo layout MCOC."""
+        # \u2500\u2500 Toolbar tr\u00ean c\u00f9ng \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        toolbar = tk.Frame(parent_frame, pady=4, padx=6)
+        toolbar.pack(fill=tk.X)
+        ttk.Button(toolbar, text="Th\u00eam file",    command=self.load_file_batch).pack(side=tk.LEFT, padx=3)
+        ttk.Button(toolbar, text="Th\u00eam th\u01b0 m\u1ee5c", command=self.load_folder_batch).pack(side=tk.LEFT, padx=3)
+        tk.Label(toolbar, text="K\u00e9o th\u1ea3 nhi\u1ec1u file ho\u1eb7c th\u01b0 m\u1ee5c v\u00e0o v\u00f9ng d\u1eef li\u1ec7u \u0111\u1ea7u v\u00e0o.",
+                 fg="#555").pack(side=tk.RIGHT, padx=6)
+
+        # \u2500\u2500 Body: chia \u0111\u00f4i tr\u00e1i / ph\u1ea3i \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        body = ttk.PanedWindow(parent_frame, orient=tk.HORIZONTAL)
+        body.pack(fill=tk.BOTH, expand=True, padx=6, pady=(0, 4))
+
+        # \u2500\u2500 Panel tr\u00e1i: Danh s\u00e1ch file \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        left = tk.LabelFrame(body, text="D\u1eef li\u1ec7u \u0111\u1ea7u v\u00e0o", padx=4, pady=4)
+        body.add(left, weight=3)
+
+        cols_b = ("#", "T\u00ean file", "Th\u01b0 m\u1ee5c", "Tr\u1ea1ng th\u00e1i")
+        self.tree_batch = ttk.Treeview(left, columns=cols_b, show="headings", selectmode="extended")
+        self.tree_batch.heading("#",          text="#")
+        self.tree_batch.heading("T\u00ean file",    text="T\u00ean file")
+        self.tree_batch.heading("Th\u01b0 m\u1ee5c",   text="Th\u01b0 m\u1ee5c")
+        self.tree_batch.heading("Tr\u1ea1ng th\u00e1i",  text="Tr\u1ea1ng th\u00e1i")
+        self.tree_batch.column("#",          width=34,  anchor="center", stretch=False)
+        self.tree_batch.column("T\u00ean file",    width=160, anchor="w")
+        self.tree_batch.column("Th\u01b0 m\u1ee5c",   width=320, anchor="w")
+        self.tree_batch.column("Tr\u1ea1ng th\u00e1i",  width=100, anchor="center", stretch=False)
+        # M\u00e0u tag tr\u1ea1ng th\u00e1i
+        self.tree_batch.tag_configure("done",    foreground="#27ae60")
+        self.tree_batch.tag_configure("running", foreground="#2980b9")
+        self.tree_batch.tag_configure("fail",    foreground="#e74c3c")
+        self.tree_batch.tag_configure("wait",    foreground="#7f8c8d")
+
+        sb_b = ttk.Scrollbar(left, orient=tk.VERTICAL, command=self.tree_batch.yview)
+        self.tree_batch.configure(yscrollcommand=sb_b.set)
         self.tree_batch.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        scrollbar = ttk.Scrollbar(frame_list, orient=tk.VERTICAL, command=self.tree_batch.yview)
-        self.tree_batch.configure(yscroll=scrollbar.set)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        frame_list_btns = tk.Frame(parent_frame, padx=10)
-        frame_list_btns.pack(fill=tk.X)
-        ttk.Button(frame_list_btns, text="Thêm File", command=self.load_file_batch).pack(side=tk.LEFT, padx=5)
-        ttk.Button(frame_list_btns, text="Xóa chọn", command=self.delete_selected_batch).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(frame_list_btns, text="Xóa tất cả", command=self.clear_all_batch).pack(side=tk.RIGHT, padx=5)
-        
-        # Frame Middle: Thiết lập chạy
-        frame_settings = tk.LabelFrame(parent_frame, text="Thiết lập chạy & Xuất kết quả", padx=10, pady=10)
-        frame_settings.pack(fill=tk.X, padx=10, pady=5)
-        
-        dir_frame = tk.Frame(frame_settings)
-        dir_frame.pack(fill=tk.X, pady=5)
-        tk.Label(dir_frame, text="Thư mục lưu:").pack(side=tk.LEFT)
-        self.txt_out_dir = tk.Entry(dir_frame, width=50)
-        self.txt_out_dir.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
-        ttk.Button(dir_frame, text="Chọn...", command=self.choose_out_dir).pack(side=tk.LEFT)
-        
-        opts_frame = tk.Frame(frame_settings)
-        opts_frame.pack(fill=tk.X, pady=5)
+        sb_b.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Footer \u0111\u1ebfm file + n\u00fat x\u00f3a
+        foot = tk.Frame(left)
+        foot.pack(fill=tk.X, pady=(4, 0))
+        self.lbl_batch_count = tk.Label(foot, text="0 file", fg="#555")
+        self.lbl_batch_count.pack(side=tk.LEFT)
+        ttk.Button(foot, text="X\u00f3a ch\u1ecdn", command=self.delete_selected_batch).pack(side=tk.RIGHT, padx=3)
+        ttk.Button(foot, text="X\u00f3a t\u1ea5t c\u1ea3",  command=self.clear_all_batch).pack(side=tk.RIGHT, padx=3)
+
+        # Drag-drop v\u00e0o danh s\u00e1ch
+        self.tree_batch.drop_target_register(DND_FILES)
+        self.tree_batch.dnd_bind("<<Drop>>", self._batch_drop)
+
+        # \u2500\u2500 Panel ph\u1ea3i: Thi\u1ebft l\u1eadp ch\u1ea1y \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        right = tk.LabelFrame(body, text="Thi\u1ebft l\u1eadp ch\u1ea1y", padx=8, pady=6)
+        body.add(right, weight=2)
+
+        # Th\u01b0 m\u1ee5c xu\u1ea5t k\u1ebft qu\u1ea3
+        tk.Label(right, text="Th\u01b0 m\u1ee5c xu\u1ea5t k\u1ebft qu\u1ea3", font=("", 9, "bold"), anchor="w").pack(fill=tk.X)
+        dir_f = tk.Frame(right)
+        dir_f.pack(fill=tk.X, pady=(2, 0))
+        self.txt_out_dir = tk.Entry(dir_f)
+        self.txt_out_dir.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(dir_f, text="Ch\u1ecdn...", command=self.choose_out_dir).pack(side=tk.LEFT, padx=4)
+        tk.Label(right, text="\u0110\u1ec3 tr\u1ed1ng: k\u1ebft qu\u1ea3 l\u01b0u c\u00f9ng th\u01b0 m\u1ee5c t\u1eebng file \u0111\u1ea7u v\u00e0o.",
+                 fg="#888", font=("", 8)).pack(anchor="w")
+
+        ttk.Separator(right, orient="horizontal").pack(fill=tk.X, pady=6)
+
+        # Tab xu\u1ea5t (Xu\u1ea5t k\u1ebft qu\u1ea3 / Thi\u1ebft l\u1eadp n\u00e2ng cao)
+        nb_right = ttk.Notebook(right)
+        nb_right.pack(fill=tk.BOTH, expand=True)
+
+        tab_export = tk.Frame(nb_right, padx=6, pady=6)
+        nb_right.add(tab_export, text="Xu\u1ea5t k\u1ebft qu\u1ea3")
+
+        tab_adv = tk.Frame(nb_right, padx=6, pady=6)
+        nb_right.add(tab_adv, text="N\u00e2ng cao")
+
+        # Tab xu\u1ea5t k\u1ebft qu\u1ea3
+        self.var_export_pdf   = tk.BooleanVar(value=True)
         self.var_export_excel = tk.BooleanVar(value=True)
-        self.var_export_pdf = tk.BooleanVar(value=True)
-        self.var_export_png = tk.BooleanVar(value=True)
-        
-        tk.Checkbutton(opts_frame, text="Xuất bảng tính Excel (Chi tiết R1-R6)", variable=self.var_export_excel).pack(side=tk.LEFT, padx=10)
-        tk.Checkbutton(opts_frame, text="Xuất báo cáo PDF", variable=self.var_export_pdf).pack(side=tk.LEFT, padx=10)
-        tk.Checkbutton(opts_frame, text="Xuất ảnh mặt bằng (PNG)", variable=self.var_export_png).pack(side=tk.LEFT, padx=10)
-        self.var_merge_pdf = tk.BooleanVar(value=False)
-        tk.Checkbutton(opts_frame, text="Gộp các báo cáo thành 1 file PDF tổng hợp", variable=self.var_merge_pdf).pack(side=tk.LEFT, padx=10)
-        
-        # Frame Bottom: Tiến trình
-        frame_progress = tk.LabelFrame(parent_frame, text="Tiến trình", padx=10, pady=10)
-        frame_progress.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        self.txt_batch_log = tk.Text(frame_progress, height=8, bg="black", fg="white", font=("Consolas", 10))
-        self.txt_batch_log.pack(fill=tk.BOTH, expand=True)
-        
-        frame_run = tk.Frame(parent_frame, padx=10, pady=10)
-        frame_run.pack(fill=tk.X)
-        self.btn_run_batch = tk.Button(frame_run, text="TÍNH TOÁN", bg="#4CAF50", fg="white", font=("Arial", 12, "bold"), height=2, command=self.run_batch)
-        self.btn_run_batch.pack(side=tk.RIGHT, padx=10, ipadx=20)
-        
-        self.batch_files = [] # list of dicts: {'path': filepath, 'status': str}
+        self.var_export_png   = tk.BooleanVar(value=True)
+        self.var_merge_pdf    = tk.BooleanVar(value=True)
+
+        tk.Checkbutton(tab_export, text="Xu\u1ea5t b\u00e1o c\u00e1o PDF",
+                       variable=self.var_export_pdf).pack(anchor="w", pady=2)
+        tk.Checkbutton(tab_export, text="Xu\u1ea5t b\u1ea3ng Excel",
+                       variable=self.var_export_excel).pack(anchor="w", pady=2)
+        tk.Checkbutton(tab_export, text="Xu\u1ea5t m\u1eb7t b\u1eb1ng c\u1ecdc d\u1ea1ng PNG",
+                       variable=self.var_export_png).pack(anchor="w", pady=2)
+        tk.Checkbutton(tab_export, text="G\u1ed9p c\u00e1c PDF th\u00e0nh m\u1ed9t file t\u1ed5ng h\u1ee3p",
+                       variable=self.var_merge_pdf).pack(anchor="w", pady=2)
+
+        ttk.Separator(tab_export, orient="horizontal").pack(fill=tk.X, pady=6)
+
+        pf = tk.Frame(tab_export)
+        pf.pack(fill=tk.X)
+        tk.Label(pf, text="Prefix t\u00ean file", width=14, anchor="w").grid(row=0, column=0, sticky="w")
+        self.txt_prefix = tk.Entry(pf, width=18)
+        self.txt_prefix.grid(row=0, column=1, padx=4, pady=2)
+
+        tk.Label(pf, text="Suffix t\u00ean file", width=14, anchor="w").grid(row=1, column=0, sticky="w")
+        self.txt_suffix = tk.Entry(pf, width=18)
+        self.txt_suffix.grid(row=1, column=1, padx=4, pady=2)
+
+        # Tab n\u00e2ng cao
+        self.var_override_params = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            tab_adv,
+            text="Ghi \u0111\u00e8 th\u00f4ng s\u1ed1 c\u1ecdc t\u1eeb Tab 1 (d, Po, Ct, M) l\u00ean t\u1ea5t c\u1ea3 file",
+            variable=self.var_override_params
+        ).pack(anchor="w", pady=4)
+        tk.Label(tab_adv,
+                 text="M\u1eb7c \u0111\u1ecbnh: d\u00f9ng th\u00f4ng s\u1ed1 c\u1eed c\u1ee7a t\u1eebng file (d, Po, Ct).\n"
+                      "B\u1eadt l\u00ean khi mu\u1ed1n so s\u00e1nh nhi\u1ec1u ph\u01b0\u01a1ng \u00e1n c\u00f9ng m\u1ed9t gi\u1edbi h\u1ea1n.",
+                 fg="#555", justify="left").pack(anchor="w")
+
+        # \u2500\u2500 Ti\u1ebfn tr\u00ecnh: progress bar + log \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        prog_outer = tk.LabelFrame(parent_frame, text="Ti\u1ebfn tr\u00ecnh", padx=6, pady=4)
+        prog_outer.pack(fill=tk.BOTH, expand=False, padx=6, pady=(0, 4))
+
+        prog_top = tk.Frame(prog_outer)
+        prog_top.pack(fill=tk.X, pady=(0, 4))
+        self.progress_bar = ttk.Progressbar(prog_top, orient="horizontal", mode="determinate")
+        self.progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.lbl_progress = tk.Label(prog_top, text="0/0 Ho\u00e0n th\u00e0nh", width=18, anchor="e")
+        self.lbl_progress.pack(side=tk.LEFT, padx=6)
+
+        self.txt_batch_log = tk.Text(prog_outer, height=8, bg="#1e1e1e", fg="#d4d4d4",
+                                     font=("Consolas", 9), relief="flat", wrap="word")
+        sb_log = ttk.Scrollbar(prog_outer, orient=tk.VERTICAL, command=self.txt_batch_log.yview)
+        self.txt_batch_log.configure(yscrollcommand=sb_log.set)
+        self.txt_batch_log.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        sb_log.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Tag m\u00e0u log
+        self.txt_batch_log.tag_configure("ok",    foreground="#4ec9b0")
+        self.txt_batch_log.tag_configure("err",   foreground="#f44747")
+        self.txt_batch_log.tag_configure("info",  foreground="#9cdcfe")
+        self.txt_batch_log.tag_configure("title", foreground="#dcdcaa", font=("Consolas", 9, "bold"))
+
+        # \u2500\u2500 Status bar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        status_bar = tk.Frame(parent_frame, pady=6, padx=6)
+        status_bar.pack(fill=tk.X)
+
+        self.lbl_batch_status = tk.Label(status_bar, text="S\u1eb5n s\u00e0ng.", anchor="w", fg="#555")
+        self.lbl_batch_status.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        self.btn_open_out = ttk.Button(status_bar, text="M\u1edf th\u01b0 m\u1ee5c k\u1ebft qu\u1ea3",
+                                       command=self._open_out_dir, state="disabled")
+        self.btn_open_out.pack(side=tk.LEFT, padx=4)
+
+        self._batch_stop_flag = False
+        self.btn_stop_batch = ttk.Button(status_bar, text="D\u1eebng", command=self._stop_batch, state="disabled")
+        self.btn_stop_batch.pack(side=tk.LEFT, padx=4)
+
+        self.btn_run_batch = tk.Button(status_bar, text="T\u00cdNH TO\u00c1N",
+                                       bg="#27ae60", fg="white",
+                                       font=("Arial", 11, "bold"),
+                                       padx=20, command=self.run_batch)
+        self.btn_run_batch.pack(side=tk.LEFT, padx=6)
+
+        self.batch_files = []  # list of dicts: {'path': str, 'status': str}
+
+    # \u2500\u2500 Batch helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+    def _batch_drop(self, event):
+        import re, os
+        paths = re.findall(r'\{[^}]+\}|[^{ ]+', event.data)
+        filepaths = []
+        for p in paths:
+            p = p.strip('{}')
+            if os.path.isdir(p):
+                for fn in os.listdir(p):
+                    if fn.lower().endswith('.txt'):
+                        filepaths.append(os.path.join(p, fn))
+            elif os.path.isfile(p):
+                filepaths.append(p)
+        self.add_files_to_batch(filepaths)
 
     def load_file_batch(self):
-        from tkinter import filedialog
-        filepaths = filedialog.askopenfilenames(filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")])
-        self.add_files_to_batch(filepaths)
+        fps = filedialog.askopenfilenames(
+            filetypes=[("Text / CSV Files", "*.txt *.csv"), ("All Files", "*.*")])
+        self.add_files_to_batch(fps)
+
+    def load_folder_batch(self):
+        import os
+        folder = filedialog.askdirectory(title="Ch\u1ecdn th\u01b0 m\u1ee5c ch\u1ee9a c\u00e1c file \u0111\u1ea7u v\u00e0o")
+        if not folder:
+            return
+        fps = [os.path.join(folder, fn)
+               for fn in sorted(os.listdir(folder))
+               if fn.lower().endswith(('.txt', '.csv'))]
+        if not fps:
+            messagebox.showinfo("Th\u00f4ng b\u00e1o", "Th\u01b0 m\u1ee5c kh\u00f4ng c\u00f3 file .txt / .csv n\u00e0o.")
+            return
+        self.add_files_to_batch(fps)
 
     def add_files_to_batch(self, filepaths):
         import os
+        added = 0
         for fp in filepaths:
-            # Check if already added
-            if any(f['path'] == fp for f in self.batch_files): continue
-            
-            self.batch_files.append({'path': fp, 'status': 'Chờ'})
-            name = os.path.basename(fp)
+            if any(f['path'] == fp for f in self.batch_files):
+                continue
+            self.batch_files.append({'path': fp, 'status': 'Ch\u1edd'})
+            name   = os.path.basename(fp)
             folder = os.path.dirname(fp)
-            self.tree_batch.insert("", "end", values=(len(self.batch_files), name, folder, "Chờ"))
-            
+            idx    = len(self.batch_files)
+            self.tree_batch.insert("", "end",
+                                   values=(idx, name, folder, "Ch\u1edd"),
+                                   tags=("wait",))
+            added += 1
+        self.lbl_batch_count.config(text=f"{len(self.batch_files)} file")
+
     def delete_selected_batch(self):
-        selected_items = self.tree_batch.selection()
-        for item in selected_items:
-            values = self.tree_batch.item(item, 'values')
-            path_to_remove = None
-            for f in self.batch_files:
-                if f['path'].endswith(values[1]):
-                    path_to_remove = f
-                    break
-            if path_to_remove:
-                self.batch_files.remove(path_to_remove)
+        sel = self.tree_batch.selection()
+        if not sel:
+            return
+        # X\u00e1c \u0111\u1ecbnh t\u1eadp \u0111\u01b0\u1eddng d\u1eabn c\u1ea7n x\u00f3a
+        paths_to_remove = set()
+        for item in sel:
+            vals = self.tree_batch.item(item, 'values')
+            fname = vals[1]; fdir = vals[2]
+            import os
+            paths_to_remove.add(os.path.join(str(fdir), str(fname)))
+        self.batch_files = [f for f in self.batch_files if f['path'] not in paths_to_remove]
+        for item in sel:
             self.tree_batch.delete(item)
-            
+        # \u0110\u00e1nh s\u1ed1 l\u1ea1i
+        for i, item in enumerate(self.tree_batch.get_children(), 1):
+            vals = self.tree_batch.item(item, 'values')
+            self.tree_batch.item(item, values=(i, vals[1], vals[2], vals[3]))
+        self.lbl_batch_count.config(text=f"{len(self.batch_files)} file")
+
     def clear_all_batch(self):
         self.batch_files.clear()
         for item in self.tree_batch.get_children():
             self.tree_batch.delete(item)
-            
+        self.lbl_batch_count.config(text="0 file")
+
     def choose_out_dir(self):
-        from tkinter import filedialog
         folder = filedialog.askdirectory()
         if folder:
             self.txt_out_dir.delete(0, tk.END)
             self.txt_out_dir.insert(0, folder)
-            
-    def log_batch(self, msg):
-        self.txt_batch_log.insert(tk.END, msg + "\n")
+
+    def _open_out_dir(self):
+        import os, subprocess
+        out = getattr(self, '_last_out_dir', None) or self.txt_out_dir.get().strip()
+        if out and os.path.isdir(out):
+            subprocess.Popen(f'explorer "{os.path.normpath(out)}"')
+        else:
+            from tkinter import messagebox
+            messagebox.showinfo("Th\u00f4ng b\u00e1o", "Th\u01b0 m\u1ee5c xu\u1ea5t ch\u01b0a \u0111\u01b0\u1ee3c ch\u1ecdn ho\u1eb7c kh\u00f4ng t\u1ed3n t\u1ea1i.")
+
+    def _stop_batch(self):
+        self._batch_stop_flag = True
+        self.log_batch(">>> \u0110\u00e3 g\u1eedi t\u00edn hi\u1ec7u D\u1eebng. Ch\u1edd file hi\u1ec7n t\u1ea1i ho\u00e0n th\u00e0nh...", tag="err")
+
+    def log_batch(self, msg, tag="info"):
+        self.txt_batch_log.insert(tk.END, msg + "\n", tag)
         self.txt_batch_log.see(tk.END)
-        self.root.update()
+        self.root.update_idletasks()
 
     def update_batch_status(self, index, status):
         self.batch_files[index]['status'] = status
-        item = self.tree_batch.get_children()[index]
+        items = self.tree_batch.get_children()
+        if index >= len(items):
+            return
+        item = items[index]
         vals = self.tree_batch.item(item, 'values')
-        self.tree_batch.item(item, values=(vals[0], vals[1], vals[2], status))
-        self.root.update()
+        tag_map = {"Xong": "done", "Ch\u1edd": "wait", "\u0110ang ch\u1ea1y...": "running",
+                   "Kh\u00f4ng \u0110\u1ea1t": "fail", "L\u1ed7i": "fail"}
+        tag = tag_map.get(status, "wait")
+        self.tree_batch.item(item, values=(vals[0], vals[1], vals[2], status), tags=(tag,))
+        self.root.update_idletasks()
+
+    # \u2500\u2500 Logic ch\u1ea1y h\u00e0ng lo\u1ea1t \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
     def run_batch(self):
-        import os
-        import threading
+        import os, threading
         from core.optimizer import run_optimization
         from io_handlers.file_io import parse_input_file
         from io_handlers.export_utils import export_excel, export_pdf, export_png
 
-        out_dir = self.txt_out_dir.get().strip()
-        if not out_dir:
-            from tkinter import messagebox
-            messagebox.showwarning("Cảnh báo", "Vui lòng chọn thư mục lưu kết quả!")
+        if not self.batch_files:
+            messagebox.showwarning("C\u1ea3nh b\u00e1o", "Ch\u01b0a c\u00f3 file n\u00e0o trong danh s\u00e1ch.")
             return
-            
+
+        global_out_dir = self.txt_out_dir.get().strip()   # c\u00f3 th\u1ec3 r\u1ed7ng
+
         def task():
+            self._batch_stop_flag = False
             self.btn_run_batch.config(state=tk.DISABLED)
-            self.log_batch("=== BẮT ĐẦU CHẠY HÀNG LOẠT ===")
-            
+            self.btn_stop_batch.config(state=tk.NORMAL)
+            self.btn_open_out.config(state="disabled")
+            self.progress_bar["maximum"] = len(self.batch_files)
+            self.progress_bar["value"] = 0
+
+            prefix_str = self.txt_prefix.get().strip()
+            suffix_str = self.txt_suffix.get().strip()
+
+            self.log_batch("=" * 55, "title")
+            self.log_batch(f"  B\u1eaet \u0111\u1ea7u ch\u1ea1y h\u00e0ng lo\u1ea1t: {len(self.batch_files)} file", "title")
+            self.log_batch("=" * 55, "title")
+
+            n_ok = n_fail = n_err = 0
             generated_pdfs = []
+            last_out_dir = global_out_dir
+
             for i, f in enumerate(self.batch_files):
-                if f['status'] == 'Xong': continue
-                
+                if self._batch_stop_flag:
+                    self.log_batch(">>> D\u1eebng theo y\u00eau c\u1ea7u ng\u01b0\u1eddi d\u00f9ng.", "err")
+                    break
+
                 filepath = f['path']
                 filename = os.path.basename(filepath)
-                # Chuẩn hóa tên file sang ASCII không dấu để tránh lỗi đường dẫn
-                prefix = to_safe_filename(filename.split('.')[0]) or filename.split('.')[0]
-                
-                self.update_batch_status(i, "Đang chạy...")
-                self.log_batch(f"[{i+1}/{len(self.batch_files)}] Đang xử lý: {filename}")
-                
+                # Th\u01b0 m\u1ee5c xu\u1ea5t: n\u1ebfu \u0111\u1ec3 tr\u1ed1ng th\u00ec l\u00e0 c\u00f9ng th\u01b0 m\u1ee5c file \u0111\u1ea7u v\u00e0o
+                out_dir = global_out_dir or os.path.dirname(filepath)
+                last_out_dir = out_dir
+
+                raw_stem  = filename.rsplit('.', 1)[0]
+                safe_stem = to_safe_filename(raw_stem) or raw_stem
+                file_prefix = f"{prefix_str}{safe_stem}{suffix_str}"
+
+                self.update_batch_status(i, "\u0110ang ch\u1ea1y...")
+                self.log_batch(f"\n[{i+1}/{len(self.batch_files)}] {filename}", "info")
+
                 try:
                     params, loads, proj_name = parse_input_file(filepath)
-                    
-                    # Cập nhật giới hạn thiết kế từ giao diện (Tab 1) cho tất cả các file
-                    params['D_PILE'] = self.params['D_PILE'].get()
-                    params['P_LIMIT'] = self.params['P_LIMIT'].get()
-                    params['P_TENSION'] = self.params['P_TENSION'].get()
-                    params['M_LIMIT'] = self.params['M_LIMIT'].get()
-                    params['mock_mode'] = self.params['mock_mode'].get()
+
+                    # \u2500\u2500 S\u1eeda bug: SAFE_D ph\u1ea3i \u0111\u01b0\u1ee3c thi\u1ebft l\u1eadp \u0111\u1ed3ng b\u1ed9 v\u1edbi D_PILE \u2500\u2500\u2500\u2500\u2500\u2500
+                    d_pile = params.get('D_PILE', 1.0)
+                    params['SAFE_D'] = d_pile   # Bu\u1ed9c c\u00e0i \u2014 ph\u00f2ng fallback sai trong optimizer
+
+                    # \u2500\u2500 Ghi \u0111\u00e8 th\u00f4ng s\u1ed1 t\u1eeb Tab 1 n\u1ebfu ng\u01b0\u1eddi d\u00f9ng b\u1eadt t\u00f9y ch\u1ecdn \u2500\u2500\u2500\u2500\u2500
+                    if self.var_override_params.get():
+                        params['D_PILE']    = self.params['D_PILE'].get()
+                        params['P_LIMIT']   = self.params['P_LIMIT'].get()
+                        params['P_TENSION'] = self.params['P_TENSION'].get()
+                        params['M_LIMIT']   = self.params['M_LIMIT'].get()
+                        params['SAFE_D']    = self.params['D_PILE'].get()  # c\u1eadp nh\u1eadt l\u1ea1i sau khi ghi \u0111\u00e8
+
+                    params['mock_mode']       = True
                     params['result_filepath'] = filepath
-                    
-                    results = run_optimization(params, loads)
-                    rec = results.get('recommended')
-                    
+
+                    # Ki\u1ec3m tra d\u1eef li\u1ec7u \u0111\u1ea7u v\u00e0o t\u1ed1i thi\u1ec3u
+                    if not loads:
+                        raise ValueError("File kh\u00f4ng c\u00f3 t\u1ed5 h\u1ee3p t\u1ea3i tr\u1ecdng n\u00e0o.")
+                    if 'L_X' not in params or 'L_Y' not in params:
+                        raise ValueError("File thi\u1ebfu k\u00edch th\u01b0\u1edbc b\u1ec7 (L_X, L_Y).")
+
+                    self.log_batch(
+                        f"  L_X={params['L_X']:.2f}m  L_Y={params['L_Y']:.2f}m  "
+                        f"d={params.get('D_PILE',0):.2f}m  Po={params.get('P_LIMIT',0):.0f}T  "
+                        f"Loads={len(loads)}", "info"
+                    )
+
+                    results   = run_optimization(params, loads)
+                    rec       = results.get('recommended')
+                    orig      = results.get('original_config')
+                    all_valid = results.get('all_valid_configs', [])
+
+                    # Log ph\u01b0\u01a1ng \u00e1n g\u1ed1c (n\u1ebfu c\u00f3)
+                    if orig:
+                        orig_status = "\u0110\u1ea0T" if orig['ok'] else "KH\u00d4NG \u0110\u1ea0T"
+                        self.log_batch(
+                            f"  Phuong an goc ({orig['n']} coc): {orig_status}  "
+                            f"Pmax={orig['pmax']:.1f}T", "info"
+                        )
+
                     if rec:
-                        # Draw to canvas to get image
+                        # Xu\u1ea5t file
+                        if not os.path.exists(out_dir):
+                            os.makedirs(out_dir)
+
                         self.plot_canvas.draw_simulation(rec['coords'], params)
-                        
+
                         png_path = None
                         if self.var_export_png.get() or self.var_export_pdf.get():
-                            png_path = export_png(self.plot_canvas, rec['coords'], params, out_dir, prefix)
-                            
+                            png_path = export_png(
+                                self.plot_canvas, rec['coords'], params, out_dir, file_prefix)
+
                         if self.var_export_excel.get():
-                            export_excel(rec, loads, params, out_dir, prefix)
-                            
+                            export_excel(rec, loads, params, out_dir, file_prefix)
+
                         if self.var_export_pdf.get():
-                            pdf_path = export_pdf(rec, loads, params, out_dir, prefix, png_path)
+                            pdf_path = export_pdf(rec, loads, params, out_dir, file_prefix, png_path)
                             generated_pdfs.append(pdf_path)
-                            
-                        self.log_batch(f"  -> Xong! Tối ưu: Kieu {rec['type']} ({rec['n']} cọc).")
+
+                        self.log_batch(
+                            f"  -> OK  Kieu {rec['type']} ({rec['n']} coc)  "
+                            f"Pmax={rec['pmax']:.1f}T  [ti\u1ebft ki\u1ec7m so v\u1edbi {orig['n'] if orig else '?'} coc goc]",
+                            "ok"
+                        )
                         self.update_batch_status(i, "Xong")
+                        n_ok += 1
                     else:
-                        self.log_batch(f"  -> Lỗi: Không tìm thấy phương án thỏa mãn.")
-                        self.update_batch_status(i, "Không Đạt")
+                        reason = results.get('reason', 'Kh\u00f4ng r\u00f5')
+                        valid_count = len(all_valid)
+                        self.log_batch(
+                            f"  -> KHONG DAT  (valid={valid_count})  Ly do: {reason}", "err")
+                        # Log th\u00eam chi ti\u1ebft n\u1ebfu kh\u00f4ng c\u00f3 ph\u01b0\u01a1ng \u00e1n n\u00e0o \u0111\u1ea1t
+                        if valid_count == 0 and results.get('all_candidates'):
+                            sample = results['all_candidates'][:3]
+                            for c in sample:
+                                self.log_batch(
+                                    f"     Vi du: kieu {c['type']} {c['nx']}x{c['ny']}  "
+                                    f"Pmax={c['pmax']:.1f}T  -> {c.get('msg','')[:60]}", "err"
+                                )
+                        self.update_batch_status(i, "Kh\u00f4ng \u0110\u1ea1t")
+                        n_fail += 1
+
                 except Exception as e:
                     import traceback
-                    self.log_batch(f"  -> Lỗi khi xử lý {filename}: {str(e)}")
-                    print(traceback.format_exc())
-                    self.update_batch_status(i, "Lỗi")
-                    
-            
+                    self.log_batch(f"  -> LOI: {str(e)}", "err")
+                    self.log_batch(traceback.format_exc()[-300:], "err")
+                    self.update_batch_status(i, "L\u1ed7i")
+                    n_err += 1
+
+                # C\u1eadp nh\u1eadt progress
+                done = i + 1
+                self.progress_bar["value"] = done
+                self.lbl_progress.config(text=f"{done}/{len(self.batch_files)} Ho\u00e0n th\u00e0nh")
+
+            # G\u1ed9p PDF
             if self.var_merge_pdf.get() and generated_pdfs:
                 try:
-                    self.log_batch("Đang gộp file PDF...")
+                    self.log_batch("\nDang gop file PDF...", "info")
                     from PyPDF2 import PdfMerger
                     merger = PdfMerger()
                     for pdf in generated_pdfs:
                         merger.append(pdf)
-                    merged_path = os.path.join(out_dir, "TONG_HOP_REPORT.pdf")
+                    merged_name = f"{prefix_str}MCOC_tong_hop{suffix_str}.pdf"
+                    merged_path = os.path.join(last_out_dir, merged_name)
                     merger.write(merged_path)
                     merger.close()
-                    self.log_batch(f"Đã gộp thành công: TONG_HOP_REPORT.pdf")
+                    self.log_batch(f"Da gop PDF: {merged_name}", "ok")
                 except Exception as e:
-                    self.log_batch(f"Lỗi khi gộp PDF: {str(e)}")
-                    
-            self.log_batch("=== HOÀN THÀNH ===")
+                    self.log_batch(f"Loi gop PDF: {str(e)}", "err")
+
+            # T\u1ed5ng k\u1ebft
+            total = n_ok + n_fail + n_err
+            self.log_batch("\n" + "=" * 55, "title")
+            self.log_batch(
+                f"  HOAN THANH: {n_ok}/{total} OK, {n_fail} khong dat, {n_err} loi", "title")
+            if last_out_dir:
+                self.log_batch(f"  Ket qua: {last_out_dir}", "title")
+            self.log_batch("=" * 55, "title")
+
+            self.lbl_batch_status.config(text=f"Xong: {n_ok} OK / {n_fail} kh\u00f4ng \u0111\u1ea1t / {n_err} l\u1ed7i.")
             self.btn_run_batch.config(state=tk.NORMAL)
-            
+            self.btn_stop_batch.config(state=tk.DISABLED)
+            if last_out_dir and os.path.isdir(last_out_dir):
+                self._last_out_dir = last_out_dir
+                self.btn_open_out.config(state="normal")
+
         threading.Thread(target=task, daemon=True).start()

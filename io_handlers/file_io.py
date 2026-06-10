@@ -183,7 +183,7 @@ def export_output_file(filepath, results, params, loads, project_name, output_op
             status_str = "DAT" if orig['ok'] else "KHONG DAT"
             f.write(f"                        PHUONG AN GOC TRONG FILE ({status_str})\n\n")
             f.write(f"       So luong coc: {orig['n']} coc\n")
-            f.write(f"       P_max = {orig['pmax']:.1f} kN (Gioi han: {params.get('P_LIMIT', 1000.0):.1f} kN)\n")
+            f.write(f"       P_max = {orig['pmax']:.1f} T (Gioi han: {params.get('P_LIMIT', 1000.0):.1f} T)\n")
             if not orig['ok']:
                 f.write(f"       Ly do khong dat: {orig['msg']}\n")
             f.write("\n\n")
@@ -192,20 +192,20 @@ def export_output_file(filepath, results, params, loads, project_name, output_op
             f.write(f"                        TAT CA PHUONG AN DAT YEU CAU ({len(results['all_valid_configs'])})\n\n")
             for i, cfg in enumerate(results['all_valid_configs']):
                 type_str = "Truc giao" if cfg['type'] == "A" else "So le"
-                f.write(f"       {i+1:<3}. Phuong an {i+1} ({type_str}): {cfg['nx']}x{cfg['ny']}, n={cfg['n']}, Pmax={cfg['pmax']:.1f} kN\n")
+                f.write(f"       {i+1:<3}. Phuong an {i+1} ({type_str}): {cfg['nx']}x{cfg['ny']}, n={cfg['n']}, Pmax={cfg['pmax']:.1f} T\n")
             f.write("\n\n")
         
         f.write("                        BANG SO SANH CAC KIEU BO TRI\n\n")
         
         if results.get('best_A'):
             A = results['best_A']
-            f.write(f"       Kieu A (Truc giao): {A['n']} coc, P_max = {A['pmax']:.1f} kN\n")
+            f.write(f"       Kieu A (Truc giao): {A['n']} coc, P_max = {A['pmax']:.1f} T\n")
         else:
             f.write("       Kieu A (Truc giao): Khong thoa man\n")
             
         if results.get('best_B'):
             B = results['best_B']
-            f.write(f"       Kieu B (So le)  : {B['n']} coc, P_max = {B['pmax']:.1f} kN\n")
+            f.write(f"       Kieu B (So le)  : {B['n']} coc, P_max = {B['pmax']:.1f} T\n")
         else:
             f.write("       Kieu B (So le)  : Khong thoa man\n")
             
@@ -265,21 +265,28 @@ def export_output_file(filepath, results, params, loads, project_name, output_op
                     min_p_pile = p_idx + 1
                     min_p_load = l_idx + 1
                     
+        # Lực bệ cứng cho ra đơn vị thô (theo N của tải, thường kN). config['pmax']
+        # đã được hiệu chỉnh về cùng đơn vị với [Po] (T). Quy về cùng đơn vị bằng
+        # hệ số calib để bảng nội lực khớp với phần kết luận phía trên.
+        cfg_pmax = config.get('pmax', 0) or 0
+        calib = (cfg_pmax / global_pmax) if (global_pmax > 0 and cfg_pmax > 0) else 1.0
+
         for p_idx in range(n_piles):
             first_th = True
             for l_idx in range(len(loads)):
+                val = all_forces[p_idx][l_idx] * calib
                 if first_th:
-                    f.write(f"       {p_idx+1:<3} {l_idx+1:<6} {all_forces[p_idx][l_idx]:.2f}\n")
+                    f.write(f"       {p_idx+1:<3} {l_idx+1:<6} {val:.2f}\n")
                     first_th = False
                 else:
-                    f.write(f"           {l_idx+1:<6} {all_forces[p_idx][l_idx]:.2f}\n")
+                    f.write(f"           {l_idx+1:<6} {val:.2f}\n")
             f.write("\n")
-            
+
         f.write("\n")
         f.write("                                     BANG TONG KET NOI LUC\n\n")
-        f.write("                 Coc   t.h     N\n\n")
-        f.write(f"         Nmin      {min_p_pile:<5} {min_p_load:<7} {global_pmin:.2f}\n")
-        f.write(f"         Nmax      {max_p_pile:<5} {max_p_load:<7} {global_pmax:.2f}\n\n")
+        f.write("                 Coc   t.h     N (T)\n\n")
+        f.write(f"         Nmin      {min_p_pile:<5} {min_p_load:<7} {global_pmin*calib:.2f}\n")
+        f.write(f"         Nmax      {max_p_pile:<5} {max_p_load:<7} {global_pmax*calib:.2f}\n\n")
 
 
 import re

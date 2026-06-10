@@ -12,8 +12,8 @@ def check_layout(coords, nx, ny, sx, sy, layout_type, params, loads):
     SAFE_D = params.get('SAFE_D', d)
     
     n_piles = len(coords)
-    if n_piles == 0:      return False, 0, 0, 0, 0, [], "Không có cọc"
-    if len(loads) == 0:   return False, 0, 0, 0, 0, [], "Chưa nhập tổ hợp tải trọng"
+    if n_piles == 0:      return False, 0, 0, 0, 0, [], "Khong co coc"
+    if len(loads) == 0:   return False, 0, 0, 0, 0, [], "Chua nhap to hop tai trong"
     
     # Ràng buộc hình học: Bệ móng (R4) và R3
     max_x = np.max(np.abs(coords[:, 0]))
@@ -21,21 +21,21 @@ def check_layout(coords, nx, ny, sx, sy, layout_type, params, loads):
     
     geo_errors = []
     if max_x + SAFE_D > L_X / 2 + 1e-4:
-        geo_errors.append(f"Vi phạm mép bệ (X={max_x:.2f})")
+        geo_errors.append(f"Vi pham mep be (X={max_x:.2f})")
     if max_y + SAFE_D > L_Y / 2 + 1e-4:
-        geo_errors.append(f"Vi phạm mép bệ (Y={max_y:.2f})")
+        geo_errors.append(f"Vi pham mep be (Y={max_y:.2f})")
         
     if layout_type == "A":
         if nx > 1 and not (3*d - 1e-4 <= sx <= 6*d + 1e-4):
-            geo_errors.append("sx vi phạm 3d-6d")
+            geo_errors.append("sx vi pham 3d-6d")
         if ny > 1 and not (3*d - 1e-4 <= sy <= 6*d + 1e-4):
-            geo_errors.append("sy vi phạm 3d-6d")
+            geo_errors.append("sy vi pham 3d-6d")
     elif layout_type == "B":
         if nx > 1 and not (3*d - 1e-4 <= sx <= 6*d + 1e-4):
-            geo_errors.append("sx vi phạm 3d-6d")
+            geo_errors.append("sx vi pham 3d-6d")
         diag = np.sqrt((sx/2)**2 + sy**2)
         if ny > 1 and not (3*d - 1e-4 <= diag <= 6*d + 1e-4):
-            geo_errors.append("khoảng cách chéo vi phạm 3d-6d")
+            geo_errors.append("khoang cach cheo vi pham 3d-6d")
         
     # Đánh giá nội lực (Black-box)
     mock_mode = params.get('mock_mode', True)
@@ -44,7 +44,7 @@ def check_layout(coords, nx, ny, sx, sy, layout_type, params, loads):
     res, msg = MCOCBlackbox.evaluate_layout(coords, loads, params, exe_path, mock_mode)
     
     if not res:
-        return False, 0, 0, 0, 0, [], "Lỗi gọi Hộp Đen: " + msg
+        return False, 0, 0, 0, 0, [], "Loi goi Hop Den: " + msg
         
     pmax = res['pmax']
     pmin = res['pmin']
@@ -79,7 +79,7 @@ def check_layout(coords, nx, ny, sx, sy, layout_type, params, loads):
         ok = False
         fail_msg.extend(geo_errors)
         
-    final_msg = msg if ok else "Không đạt: " + ", ".join(fail_msg)
+    final_msg = msg if ok else "Khong dat: " + ", ".join(fail_msg)
     
     # Lấy forces từ kết quả Hộp đen (nếu có), nếu không có thì gán mặc định
     forces = res.get('forces', [])

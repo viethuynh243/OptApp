@@ -39,8 +39,10 @@ def export_png(plot_canvas_instance, coords, params, out_dir, prefix):
     
     # We use the existing plot_canvas instance but save it
     # Note: plot_canvas_instance should already have the plot drawn!
+    # KHÔNG dùng bbox_inches='tight': lưu nguyên khổ figure cố định để mọi ảnh
+    # có cùng kích thước, tránh ảnh không đồng đều khi gộp vào PDF tổng hợp.
     plot_canvas_instance.draw_simulation(coords, params)
-    plot_canvas_instance.fig.savefig(out_path, dpi=300, bbox_inches='tight')
+    plot_canvas_instance.fig.savefig(out_path, dpi=200)
     return out_path
 
 def export_excel(config, loads, params, out_dir, prefix):
@@ -68,15 +70,15 @@ def export_excel(config, loads, params, out_dir, prefix):
     ws['A3'].font = bold_font
     ws.append(['Lx (m)', params.get('L_X', 0), 'Ly (m)', params.get('L_Y', 0)])
     ws.append(['d (m)', params.get('D_PILE', 0), 'SAFE_D (m)', params.get('SAFE_D', 0)])
-    ws.append(['P cho phep (kN)', params.get('P_LIMIT', 0), 'P nho (kN)', params.get('P_TENSION', 0)])
+    ws.append(['Po cho phep (T)', params.get('P_LIMIT', 0), 'Ct nho (T)', params.get('P_TENSION', 0)])
     
     ws.append([])
     ws['A8'] = "Phuong an kien nghi:"
     ws['A8'].font = bold_font
     ws.append(['Kieu', config.get('type', 'Unknown')])
     ws.append(['So luong coc', config.get('n', 0)])
-    ws.append(['Pmax (kN)', round(config.get('pmax', 0), 2)])
-    ws.append(['Pmin (kN)', round(config.get('pmin', 0), 2)])
+    ws.append(['Pmax (T)', round(config.get('pmax', 0), 2)])
+    ws.append(['Pmin (T)', round(config.get('pmin', 0), 2)])
     ws.append(['Trang thai', 'DAT' if config.get('ok') else 'KHONG DAT'])
     ws.append(['Ly do', config.get('msg', '')])
     
@@ -88,7 +90,7 @@ def export_excel(config, loads, params, out_dir, prefix):
     ws[f'A{row}'].font = bold_font
     ws[f'A{row}'].alignment = center_align
     
-    headers = ["Load Case", "N (kN)", "Mx (kNm)", "My (kNm)", "Pmax (kN)", "Pmin (kN)", "Trang thai"]
+    headers = ["Load Case", "N (kN)", "Mx (kNm)", "My (kNm)", "Pmax (T)", "Pmin (T)", "Trang thai"]
     ws.append(headers)
     for cell in ws[ws.max_row]:
         cell.font = bold_font
@@ -96,11 +98,21 @@ def export_excel(config, loads, params, out_dir, prefix):
         cell.alignment = center_align
         
     forces_by_load = calculate_pile_forces(config['coords'], loads)
+
+    # Lực cọc tính theo công thức bệ cứng cho ra đơn vị thô (theo N của tải, thường kN),
+    # trong khi config['pmax'] đã được hiệu chỉnh về cùng đơn vị với [Po] (T).
+    # => Quy về cùng đơn vị bằng hệ số: calib = config['pmax'] / (Pmax thô lớn nhất).
+    raw_pmax = max((max(v) for v in forces_by_load.values() if v), default=0.0)
+    cfg_pmax = config.get('pmax', 0) or 0
+    calib = (cfg_pmax / raw_pmax) if (raw_pmax > 0 and cfg_pmax > 0) else 1.0
+
+    P_LIMIT = params.get('P_LIMIT', 900)
+    P_TENSION = params.get('P_TENSION', 0)
     for i, load in enumerate(loads):
         piles_p = forces_by_load.get(i, [])
-        pmax = max(piles_p) if piles_p else 0
-        pmin = min(piles_p) if piles_p else 0
-        status = "DAT" if (pmax <= params.get('P_LIMIT', 900) and pmin >= -params.get('P_TENSION', 200)) else "FAIL"
+        pmax = (max(piles_p) if piles_p else 0) * calib
+        pmin = (min(piles_p) if piles_p else 0) * calib
+        status = "DAT" if (pmax <= P_LIMIT and pmin >= -P_TENSION) else "FAIL"
         ws.append([i+1, load.get('N',0), load.get('Mx',0), load.get('My',0), round(pmax,2), round(pmin,2), status])
         
     # Coords Table
@@ -139,7 +151,7 @@ def export_pdf(config, loads, params, out_dir, prefix, png_path=None):
     c.drawString(70, y, f"Duong kinh coc: {params.get('D_PILE')} m"); y -= 15
     c.drawString(70, y, f"Suc chiu tai cho phep: Po = {params.get('P_LIMIT')} T, Ct = {params.get('P_TENSION')} T"); y -= 15
     if params.get('M_LIMIT', 0) > 0:
-        c.drawString(70, y, f"Suc uon cho phep: Mmax = {params.get('M_LIMIT')} kNm"); y -= 15
+        c.drawString(70, y, f"Suc uon cho phep: Mmax = {params.get('M_LIMIT')} T.m"); y -= 15
     else:
         y -= 15
     
@@ -151,15 +163,25 @@ def export_pdf(config, loads, params, out_dir, prefix, png_path=None):
     c.drawString(70, y, f"Pmax = {config.get('pmax', 0):.2f} T"); y -= 15
     c.drawString(70, y, f"Pmin = {config.get('pmin', 0):.2f} T"); y -= 15
     if params.get('M_LIMIT', 0) > 0:
-        c.drawString(70, y, f"Mmax = {max(config.get('mxmax', 0), config.get('mymax', 0)):.2f} kNm"); y -= 15
+        c.drawString(70, y, f"Mmax = {max(config.get('mxmax', 0), config.get('mymax', 0)):.2f} T.m"); y -= 15
     c.drawString(70, y, f"Trang thai: {'DAT' if config.get('ok') else 'KHONG DAT'}"); y -= 15
     c.drawString(70, y, f"Ly do: {config.get('msg', '')}"); y -= 30
     
     if png_path and os.path.exists(png_path):
         c.drawString(50, y, "3. Hinh anh mat bang:"); y -= 10
-        # Draw image, scale to fit width
-        img_w = 400
-        img_h = 300
+        # Draw image, scale to fit width while preserving aspect ratio
+        from reportlab.lib.utils import ImageReader
+        img = ImageReader(png_path)
+        orig_w, orig_h = img.getSize()
+        aspect = orig_h / float(orig_w)
+        img_w = 450
+        img_h = img_w * aspect
+        
+        # Ensure it doesn't overflow the bottom of the page
+        if img_h > y - 50:
+            img_h = y - 50
+            img_w = img_h / aspect
+            
         c.drawImage(png_path, (width - img_w)/2.0, y - img_h, width=img_w, height=img_h)
         y -= (img_h + 30)
         
