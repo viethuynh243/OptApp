@@ -1,4 +1,5 @@
 import os
+import tempfile
 import numpy as np
 from io_handlers.file_io import parse_mcoc_result_file
 
@@ -11,10 +12,59 @@ class MCOCBlackbox:
         if mock_mode or not executable_path:
             return MCOCBlackbox._mock_execution(coords, loads, params)
 
-        # Khi có executable_path thực
-        # subprocess.run([executable_path, 'input.txt', 'output.txt'])
-        # return parse_mcoc_result_file('output.txt'), "Kết quả từ phần mềm"
-        return None, "Chưa cài đặt lệnh gọi subprocess."
+        # Gọi MCOC thực: sinh file input từ template + chạy subprocess
+        try:
+            evaluator = MCOCBlackbox.make_real_evaluator(params)
+            res = evaluator(coords)
+            return res, "Kết quả MCOC thực (" + os.path.basename(res.get('result_path', '')) + ")"
+        except Exception as e:
+            return None, "Lỗi gọi MCOC: %s" % e
+
+    @staticmethod
+    def make_real_evaluator(params, log=None):
+        """
+        Tạo evaluator(coords) -> dict gọi MCOC THỰC:
+            input template + tọa độ mới -> file input -> MCOCRunner -> kết quả.
+        params cần: exe_path, input_filepath (file input MCOC gốc), original_coords.
+        """
+        from core.mcoc_runner import MCOCRunner
+        from io_handlers.mcoc_writer import MCOCTemplate
+
+        input_file = params.get('input_filepath', '')
+        if not input_file or not os.path.exists(input_file):
+            raise ValueError("Chưa có file input MCOC gốc (params['input_filepath']).")
+        if not params.get('original_coords'):
+            raise ValueError("Chưa có original_coords để nhận diện khối cọc trong template.")
+
+        template = MCOCTemplate(input_file, params['original_coords'])
+        runner = MCOCRunner(params['exe_path'], log=log)
+
+        # Thư mục làm việc riêng cạnh file input (MCOC ghi _result.txt tại đây)
+        workdir = os.path.join(os.path.dirname(os.path.abspath(input_file)), "_opt_runs")
+        os.makedirs(workdir, exist_ok=True)
+        base = os.path.splitext(os.path.basename(input_file))[0]
+        counter = [0]
+
+        def evaluator(coords):
+            counter[0] += 1
+            in_path = os.path.join(workdir, "%s_opt%03d.txt" % (base, counter[0]))
+            template.write(coords, in_path, name_suffix="OPT%03d" % counter[0])
+            return runner.run(in_path)
+
+        evaluator.runner = runner
+        evaluator.workdir = workdir
+        return evaluator
+
+    @staticmethod
+    def make_mock_evaluator(params, loads):
+        """
+        Evaluator giả lập (không cần MCOC): bệ cứng + hiệu chỉnh K từ phương án gốc.
+        Dùng để chạy thử thuật toán tinh chỉnh.
+        """
+        def evaluator(coords):
+            res, _ = MCOCBlackbox._mock_execution(np.asarray(coords, dtype=float), loads, params)
+            return res
+        return evaluator
 
     @staticmethod
     def _mock_execution(coords, loads, params):

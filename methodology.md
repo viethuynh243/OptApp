@@ -1,23 +1,23 @@
 # 📘 TÀI LIỆU KỸ THUẬT DỰ ÁN: OptApp — Tối Ưu Hóa Bố Trí Cọc Móng Cầu
 
-> **Tổ chức:** TEDI – Tổng Công ty Tư vấn Thiết kế GTVT  
-> **Ngôn ngữ:** Python 3.x  
-> **Giao diện:** Tkinter + TkinterDnD2  
+> **Tổ chức:** TEDI – Tổng Công ty Tư vấn Thiết kế GTVT
+> **Ngôn ngữ:** Python 3.x
+> **Giao diện:** Tkinter + TkinterDnD2
 > **Mục tiêu:** Tự động tìm cấu hình bố trí cọc tối ưu (ít cọc nhất, đảm bảo tuyệt đối các ràng buộc kỹ thuật) cho móng cọc cầu đường bộ.
 
 ---
 
 ## MỤC LỤC
 
-1. [Bài toán & Đặt vấn đề](#1-bài-toán--đặt-vấn-đề)
+1. [Bài toán &amp; Đặt vấn đề](#1-bài-toán--đặt-vấn-đề)
 2. [Kiến trúc tổng thể](#2-kiến-trúc-tổng-thể)
 3. [Workflow chi tiết từng bước](#3-workflow-chi-tiết-từng-bước)
 4. [Phương pháp giải quyết bài toán](#4-phương-pháp-giải-quyết-bài-toán)
-5. [Giải thích từng module & hàm](#5-giải-thích-từng-module--hàm)
+5. [Giải thích từng module &amp; hàm](#5-giải-thích-từng-module--hàm)
 6. [Bảng Design Pattern](#6-bảng-design-pattern)
 7. [Dữ liệu nhập tùy ý — Ví dụ chạy thực tế](#7-dữ-liệu-nhập-tùy-ý--ví-dụ-chạy-thực-tế)
 8. [Định dạng file Input/Output](#8-định-dạng-file-inputoutput)
-9. [Cài đặt & Chạy chương trình](#9-cài-đặt--chạy-chương-trình)
+9. [Cài đặt &amp; Chạy chương trình](#9-cài-đặt--chạy-chương-trình)
 
 ---
 
@@ -27,22 +27,18 @@
 
 Kỹ sư thiết kế cầu cần **bố trí cọc móng** cho mố/trụ cầu sao cho:
 
-| Yêu cầu | Ý nghĩa |
-|---------|---------|
-| **Ít cọc nhất** | Tiết kiệm chi phí vật liệu, thi công |
-| **Pmax ≤ Po** | Lực nén đầu cọc không vượt sức chịu tải cho phép |
-| **Pmin ≥ −Ct** | Lực nhổ (kéo) không vượt giới hạn kéo |
-| **3d ≤ s ≤ 6d** | Khoảng cách tim cọc đảm bảo tiêu chuẩn thi công |
-| **Tim cọc trong bệ** | Tất cả cọc cách mép bệ ≥ 1 đường kính cọc |
-| **M ≤ Mmax** (tùy chọn) | Momen đầu cọc không vượt sức chịu uốn |
+| Yêu cầu                        | Ý nghĩa                                                    |
+| -------------------------------- | ------------------------------------------------------------ |
+| **Ít cọc nhất**         | Tiết kiệm chi phí vật liệu, thi công                   |
+| **Pmax ≤ Po**             | Lực nén đầu cọc không vượt sức chịu tải cho phép |
+| **Pmin ≥ −Ct**           | Lực nhổ (kéo) không vượt giới hạn kéo               |
+| **3d ≤ s ≤ 6d**          | Khoảng cách tim cọc đảm bảo tiêu chuẩn thi công     |
+| **Tim cọc trong bệ**     | Tất cả cọc cách mép bệ ≥ 1 đường kính cọc        |
+| **M ≤ Mmax** (tùy chọn) | Momen đầu cọc không vượt sức chịu uốn               |
 
-### 1.2 Tại sao khó?
+### 1.2 Giải pháp cốt lõi
 
-Không gian nghiệm rất lớn (hàng trăm cấu hình lưới × nhiều tổ hợp tải trọng), mỗi lần đánh giá bằng phần mềm FEM thực (MCOC/Midas) mất **nhiều phút** → không thể quét toàn bộ.
-
-### 1.3 Giải pháp cốt lõi
-
-Thay thế bộ đánh giá FEM chậm bằng mô hình **Bệ Cứng + Hiệu chỉnh Calibration** (< 1 ms/đánh giá), sau đó quét toàn bộ không gian nghiệm.
+Sử dụng mô hình **Bệ Cứng + Hiệu chỉnh Calibration**, sau đó quét toàn bộ không gian nghiệm.
 
 ---
 
@@ -116,10 +112,10 @@ root.mainloop()          # Bắt đầu vòng lặp sự kiện Tkinter
 
 Người dùng có 2 cách nhập liệu:
 
-| Cách | Mô tả |
-|------|-------|
+| Cách                    | Mô tả                                                       |
+| ------------------------ | ------------------------------------------------------------- |
 | **Kéo thả file** | Thả file `.txt` (chuẩn MCOC) hoặc `.csv` vào cửa sổ |
-| **Nhập tay** | Điền trực tiếp thông số vào các ô Entry trên UI |
+| **Nhập tay**      | Điền trực tiếp thông số vào các ô Entry trên UI     |
 
 **Nhận dạng tự động format file:**
 
@@ -133,6 +129,7 @@ else:
 ```
 
 **Kết quả trả về:**
+
 ```python
 params = {
     'L_X': float,        # Chiều rộng bệ (m)
@@ -171,6 +168,7 @@ O  O  O  O
 ```
 
 Công thức tọa độ cọc (i, j):
+
 ```
 x_i = (i − (nx−1)/2) × sx
 y_j = (j − (ny−1)/2) × sy
@@ -189,6 +187,7 @@ O  O  O  O
 Số cọc: `n = Σ(nx nếu j chẵn, nx-1 nếu j lẻ)`
 
 **Vòng lặp sinh ứng viên trong optimizer:**
+
 ```python
 for layout_type in ["A", "B"]:
     for nx in range(2, 11):      # 2 → 10 cọc/hàng
@@ -218,8 +217,9 @@ P_i = N/n  +  Mx × yᵢ/Ix  +  My × xᵢ/Iy
 ```
 
 Trong đó:
+
 - `N`  = Lực dọc tại đáy bệ (kN)
-- `Mx`, `My` = Momen tại trọng tâm cọc (kNm)  
+- `Mx`, `My` = Momen tại trọng tâm cọc (kNm)
 - `xᵢ`, `yᵢ` = Tọa độ cọc so với trọng tâm nhóm cọc (m)
 - `Ix = Σyᵢ²` = Momen quán tính nhóm cọc theo trục X
 - `Iy = Σxᵢ²` = Momen quán tính nhóm cọc theo trục Y
@@ -263,16 +263,17 @@ My_predicted  = My_original × m_calibration
 
 **File:** `core/mechanics.py` → `check_layout()`
 
-| Ký hiệu | Loại | Điều kiện kiểm tra |
-|---------|------|-------------------|
-| **R1** | Nội lực – Nén | `Pmax ≤ P_LIMIT` (Po) |
-| **R2** | Nội lực – Nhổ | `Pmin ≥ −P_TENSION` (Ct) |
-| **R3** | Hình học – Khoảng cách | `3d ≤ sx ≤ 6d` và `3d ≤ sy ≤ 6d` |
-| **R4** | Hình học – Vị trí trong bệ | Tim cọc cách mép bệ ≥ SAFE_D |
-| **R5** | Nội lực – Uốn X | `Mx_max ≤ M_LIMIT` (nếu có giới hạn) |
-| **R6** | Nội lực – Uốn Y | `My_max ≤ M_LIMIT` (nếu có giới hạn) |
+| Ký hiệu    | Loại                            | Điều kiện kiểm tra                      |
+| ------------ | -------------------------------- | ------------------------------------------- |
+| **R1** | Nội lực – Nén                | `Pmax ≤ P_LIMIT` (Po)                    |
+| **R2** | Nội lực – Nhổ                | `Pmin ≥ −P_TENSION` (Ct)                |
+| **R3** | Hình học – Khoảng cách      | `3d ≤ sx ≤ 6d` và `3d ≤ sy ≤ 6d`   |
+| **R4** | Hình học – Vị trí trong bệ | Tim cọc cách mép bệ ≥ SAFE_D           |
+| **R5** | Nội lực – Uốn X              | `Mx_max ≤ M_LIMIT` (nếu có giới hạn) |
+| **R6** | Nội lực – Uốn Y              | `My_max ≤ M_LIMIT` (nếu có giới hạn) |
 
 **Logic loại bỏ sớm (Early Termination):**
+
 ```python
 # Kiểm tra R3/R4 TRƯỚC khi gọi Hộp Đen (tiết kiệm thời gian)
 if sx_max < 3*d or sy_max < 3*d:
@@ -323,15 +324,16 @@ if original_config['ok'] and recommended['n'] >= original_config['n']:
 
 **File:** `ui/main_window.py`, `ui/plot_canvas.py`, `io_handlers/export_utils.py`
 
-| Kênh xuất | Nội dung | Thư viện |
-|-----------|---------|---------|
-| **Text Box UI** | Bảng so sánh tất cả phương án, kết luận kiến nghị | Tkinter `Text` |
-| **Vẽ mặt bằng** | Sơ đồ cọc, màu nhiệt độ theo Pmax, colorbar | Matplotlib |
-| **File TXT** | Định dạng chuẩn MCOC, tọa độ cọc, bảng nội lực | Built-in I/O |
-| **File Excel** | Bảng tổng hợp đẹp, tọa độ, kiểm tra R1-R6 | openpyxl |
-| **File PDF** | Báo cáo kỹ thuật có chèn ảnh mặt bằng | reportlab |
+| Kênh xuất              | Nội dung                                                    | Thư viện       |
+| ------------------------ | ------------------------------------------------------------ | ---------------- |
+| **Text Box UI**    | Bảng so sánh tất cả phương án, kết luận kiến nghị | Tkinter `Text` |
+| **Vẽ mặt bằng** | Sơ đồ cọc, màu nhiệt độ theo Pmax, colorbar          | Matplotlib       |
+| **File TXT**       | Định dạng chuẩn MCOC, tọa độ cọc, bảng nội lực    | Built-in I/O     |
+| **File Excel**     | Bảng tổng hợp đẹp, tọa độ, kiểm tra R1-R6           | openpyxl         |
+| **File PDF**       | Báo cáo kỹ thuật có chèn ảnh mặt bằng               | reportlab        |
 
 **Biểu đồ màu nhiệt (Heatmap):**
+
 - 🟢 Xanh lá: P thấp (an toàn)
 - 🟡 Vàng: P gần giới hạn
 - 🔴 Đỏ: P vượt Po (không đạt)
@@ -343,16 +345,17 @@ if original_config['ok'] and recommended['n'] >= original_config['n']:
 
 ### 4.1 Tổng quan phương pháp
 
-| Giai đoạn | Phương pháp | Lý do lựa chọn |
-|-----------|------------|----------------|
-| Tìm kiếm nghiệm | **Grid Search (Quét cạn có chọn lọc)** | Không gian hữu hạn (<200 cấu hình), đảm bảo tìm TOÀN CẦU tối ưu |
-| Đánh giá nghiệm | **Rigid Cap + Calibration** | Thay FEM (<1ms vs >60s), sai số ≈ 0% nhờ hiệu chỉnh |
-| Loại bỏ sớm | **Constraint Propagation** | Loại vi phạm hình học trước khi tính nội lực |
-| So sánh kết quả | **Lexicographic Ordering** | Ưu tiên ít cọc → Pmax nhỏ |
+| Giai đoạn         | Phương pháp                                    | Lý do lựa chọn                                                            |
+| ------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Tìm kiếm nghiệm  | **Grid Search (Quét cạn có chọn lọc)** | Không gian hữu hạn (<200 cấu hình), đảm bảo tìm TOÀN CẦU tối ưu |
+| Đánh giá nghiệm | **Rigid Cap + Calibration**                 | Thay FEM (<1ms vs >60s), sai số ≈ 0% nhờ hiệu chỉnh                     |
+| Loại bỏ sớm      | **Constraint Propagation**                  | Loại vi phạm hình học trước khi tính nội lực                        |
+| So sánh kết quả  | **Lexicographic Ordering**                  | Ưu tiên ít cọc → Pmax nhỏ                                              |
 
 ### 4.2 Grid Search có chọn lọc
 
 **Không gian tìm kiếm:**
+
 - Layout: {A, B} → 2 loại
 - nx ∈ {2..10} → 9 giá trị
 - ny ∈ {2..10} → 9 giá trị
@@ -366,11 +369,13 @@ Với số cọc cố định (nx, ny), khoảng cách sx lớn nhất → Momen
 ### 4.3 Mô hình Bệ Cứng (Rigid Pile Cap)
 
 **Giả thiết:**
+
 - Bệ móng tuyệt đối cứng (không biến dạng)
 - Đất nền và cọc là lò xo đàn hồi tuyến tính bằng nhau
 - Tải trọng tác dụng tại trọng tâm nhóm cọc
 
 **Phương trình cân bằng:**
+
 ```
 ΣN = N               →   N/n = Lực trung bình/cọc
 ΣMx = Mx - N×ȳ      →   Phần đóng góp của Mx vào từng cọc
@@ -378,11 +383,13 @@ Với số cọc cố định (nx, ny), khoảng cách sx lớn nhất → Momen
 ```
 
 **Lực trên cọc thứ i:**
+
 ```
 Pᵢ = N/n  +  (Mx - N×ȳ) × (yᵢ - ȳ)/Ix  +  (My - N×x̄) × (xᵢ - x̄)/Iy
 ```
 
 **Đặc điểm:**
+
 - Tính tức thì (< 0.1 ms)
 - Sai số hệ thống so với bệ đàn hồi FEM: 5-20%
 - **Sau khi hiệu chỉnh K:** sai số ≈ 0% với cùng loại tải trọng
@@ -404,17 +411,18 @@ P_dự_báo(mới) = P_lý_thuyết(mới) × K
 ```
 
 **Điều kiện áp dụng:**
+
 - Phương án mới phải có cùng loại tải trọng (tổ hợp tương tự)
 - Cùng kích thước bệ Lx, Ly
 - K được cập nhật tự động khi load file kết quả MCOC mới
 
 ### 4.5 Ưu điểm & Giới hạn
 
-| | Ưu điểm | Giới hạn |
-|-|---------|---------|
-| **Grid Search** | Đảm bảo tối ưu toàn cục | Chỉ xét lưới đều (A, B) |
-| **Bệ Cứng** | Cực nhanh, công thức đơn giản | Cần 1 điểm hiệu chỉnh thực tế |
-| **Calibration** | Sai số ≈ 0% sau hiệu chỉnh | Kém chính xác khi bố cục cọc thay đổi quá nhiều |
+|                       | Ưu điểm                          | Giới hạn                                                |
+| --------------------- | ----------------------------------- | --------------------------------------------------------- |
+| **Grid Search** | Đảm bảo tối ưu toàn cục      | Chỉ xét lưới đều (A, B)                             |
+| **Bệ Cứng**   | Cực nhanh, công thức đơn giản | Cần 1 điểm hiệu chỉnh thực tế                      |
+| **Calibration** | Sai số ≈ 0% sau hiệu chỉnh      | Kém chính xác khi bố cục cọc thay đổi quá nhiều |
 
 ---
 
@@ -447,6 +455,7 @@ for j in range(ny):
 ```
 
 **Ví dụ (nx=3, ny=2, sx=2.0, sy=3.0, Kiểu A):**
+
 ```
 (-2.0, 1.5)  (0.0, 1.5)  (2.0, 1.5)
 (-2.0,-1.5)  (0.0,-1.5)  (2.0,-1.5)
@@ -550,6 +559,7 @@ Tự động phát hiện format: CSV (dấu phẩy) hoặc TXT chuẩn MCOC.
 #### `export_output_file(filepath, results, params, loads, project_name, output_option)`
 
 Xuất file TXT định dạng chuẩn MCOC, có thêm:
+
 - Bảng so sánh Kiểu A vs Kiểu B
 - Bảng tọa độ cọc tối ưu
 - Bảng nội lực từng cọc × từng tổ hợp tải
@@ -561,6 +571,7 @@ Xuất file TXT định dạng chuẩn MCOC, có thêm:
 #### `PlotCanvas.draw_simulation(coords, params, forces, m_forces)`
 
 **Vẽ mặt bằng cọc với:**
+
 1. Hình chữ nhật xám = bệ móng
 2. Viền đỏ nét đứt = giới hạn tâm cọc (cách mép SAFE_D)
 3. Vòng tròn màu = cọc (màu nhiệt độ: xanh→vàng→đỏ theo tỉ lệ P/Po)
@@ -587,80 +598,80 @@ Xuất file TXT định dạng chuẩn MCOC, có thêm:
 
 ### 6.1 Pattern kiến trúc
 
-| Pattern | Nơi áp dụng | Mô tả |
-|---------|------------|-------|
-| **MVC (Model-View-Controller)** | Toàn dự án | `core/` = Model, `ui/` = View, `main_window.py` = Controller |
-| **Facade** | `core/optimizer.py` | `run_optimization()` là giao diện đơn giản che toàn bộ logic phức tạp bên trong |
-| **Strategy** | `core/blackbox.py` | `evaluate_layout()` chọn giữa mock (Bệ Cứng) và real (FEM subprocess) |
-| **Factory Method** | `io_handlers/file_io.py` | `parse_input_file()` quyết định parser nào được dùng dựa trên nội dung file |
-| **Observer** | `ui/main_window.py` | Tkinter event binding (`bind`, `dnd_bind`) phản ứng sự kiện người dùng |
-| **Template Method** | `core/mechanics.py` | `check_layout()` định nghĩa khung kiểm tra cố định (R4→R3→Hộp Đen→R1/R2/R5/R6) |
+| Pattern                               | Nơi áp dụng             | Mô tả                                                                                      |
+| ------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------- |
+| **MVC (Model-View-Controller)** | Toàn dự án              | `core/` = Model, `ui/` = View, `main_window.py` = Controller                           |
+| **Facade**                      | `core/optimizer.py`      | `run_optimization()` là giao diện đơn giản che toàn bộ logic phức tạp bên trong  |
+| **Strategy**                    | `core/blackbox.py`       | `evaluate_layout()` chọn giữa mock (Bệ Cứng) và real (FEM subprocess)                 |
+| **Factory Method**              | `io_handlers/file_io.py` | `parse_input_file()` quyết định parser nào được dùng dựa trên nội dung file     |
+| **Observer**                    | `ui/main_window.py`      | Tkinter event binding (`bind`, `dnd_bind`) phản ứng sự kiện người dùng            |
+| **Template Method**             | `core/mechanics.py`      | `check_layout()` định nghĩa khung kiểm tra cố định (R4→R3→Hộp Đen→R1/R2/R5/R6) |
 
 ### 6.2 Pattern cấu trúc dữ liệu
 
-| Pattern | Biến / Hàm | Mô tả |
-|---------|-----------|-------|
-| **DTO (Data Transfer Object)** | `params` dict, `loads` list of dict | Gói gọn dữ liệu giữa các tầng (UI → Core → IO) |
-| **Dictionary as Config** | `params = {'L_X':..., 'D_PILE':...}` | Cấu hình linh hoạt, dễ mở rộng thêm key mới |
-| **Optional Sentinel** | `M_LIMIT = 0 → float('inf')` | Giá trị 0 có ngữ nghĩa đặc biệt "bỏ qua kiểm tra" |
-| **Early Return** | `if sx_max < 3d: continue` | Thoát sớm khi vi phạm ràng buộc hiển nhiên |
+| Pattern                              | Biến / Hàm                            | Mô tả                                                     |
+| ------------------------------------ | --------------------------------------- | ----------------------------------------------------------- |
+| **DTO (Data Transfer Object)** | `params` dict, `loads` list of dict | Gói gọn dữ liệu giữa các tầng (UI → Core → IO)     |
+| **Dictionary as Config**       | `params = {'L_X':..., 'D_PILE':...}`  | Cấu hình linh hoạt, dễ mở rộng thêm key mới         |
+| **Optional Sentinel**          | `M_LIMIT = 0 → float('inf')`         | Giá trị 0 có ngữ nghĩa đặc biệt "bỏ qua kiểm tra" |
+| **Early Return**               | `if sx_max < 3d: continue`            | Thoát sớm khi vi phạm ràng buộc hiển nhiên           |
 
 ### 6.3 Pattern theo từng hàm quan trọng
 
-| Hàm | Design Pattern | Giải thích |
-|-----|---------------|------------|
-| `generate_coords()` | **Builder** | Xây dựng tọa độ từng cọc một theo quy tắc lưới |
-| `_rigid_cap_pmax()` | **Pure Function** | Không side effect, kết quả chỉ phụ thuộc input |
-| `_rigid_cap_pmin()` | **Pure Function** | Như trên |
-| `_mock_execution()` | **Proxy** | Giả lập hành vi của hệ thống FEM thực (MCOC) |
-| `check_layout()` | **Chain of Responsibility** | Kiểm tra tuần tự từng ràng buộc, dừng khi fail |
-| `run_optimization()` | **Iterator + Aggregator** | Lặp qua không gian nghiệm, tổng hợp kết quả tốt nhất |
-| `parse_input_file()` | **Factory Method** | Chọn parser phù hợp theo format file |
-| `export_output_file()` | **Template Method** | Cấu trúc file xuất cố định, nội dung thay đổi theo kết quả |
-| `run_batch()` | **Command + Thread** | Đóng gói tác vụ batch, chạy trong background thread |
-| `populate_comboboxes()` | **Observer** | Cập nhật UI phản ứng theo kết quả tối ưu |
-| `draw_simulation()` | **Renderer** | Vẽ lại toàn bộ canvas mỗi khi dữ liệu thay đổi |
-| `handle_drop()` | **Event Handler** | Xử lý sự kiện kéo-thả file |
+| Hàm                      | Design Pattern                    | Giải thích                                                          |
+| ------------------------- | --------------------------------- | --------------------------------------------------------------------- |
+| `generate_coords()`     | **Builder**                 | Xây dựng tọa độ từng cọc một theo quy tắc lưới             |
+| `_rigid_cap_pmax()`     | **Pure Function**           | Không side effect, kết quả chỉ phụ thuộc input                  |
+| `_rigid_cap_pmin()`     | **Pure Function**           | Như trên                                                            |
+| `_mock_execution()`     | **Proxy**                   | Giả lập hành vi của hệ thống FEM thực (MCOC)                   |
+| `check_layout()`        | **Chain of Responsibility** | Kiểm tra tuần tự từng ràng buộc, dừng khi fail                 |
+| `run_optimization()`    | **Iterator + Aggregator**   | Lặp qua không gian nghiệm, tổng hợp kết quả tốt nhất         |
+| `parse_input_file()`    | **Factory Method**          | Chọn parser phù hợp theo format file                               |
+| `export_output_file()`  | **Template Method**         | Cấu trúc file xuất cố định, nội dung thay đổi theo kết quả |
+| `run_batch()`           | **Command + Thread**        | Đóng gói tác vụ batch, chạy trong background thread             |
+| `populate_comboboxes()` | **Observer**                | Cập nhật UI phản ứng theo kết quả tối ưu                      |
+| `draw_simulation()`     | **Renderer**                | Vẽ lại toàn bộ canvas mỗi khi dữ liệu thay đổi               |
+| `handle_drop()`         | **Event Handler**           | Xử lý sự kiện kéo-thả file                                      |
 
 ### 6.4 Thư viện & Mục đích sử dụng
 
-| Thư viện | Phiên bản | Mục đích | Module sử dụng |
-|---------|-----------|---------|----------------|
-| `numpy` | ≥1.20 | Ma trận tọa độ, tính Ix/Iy, vectorized math | `blackbox.py`, `mechanics.py`, `generator.py` |
-| `tkinter` | stdlib | Giao diện cửa sổ, widget, event | `main_window.py` |
-| `tkinterdnd2` | ≥0.3 | Hỗ trợ kéo-thả file vào cửa sổ | `main.py`, `main_window.py` |
-| `matplotlib` | ≥3.3 | Vẽ mặt bằng cọc, heatmap, colorbar | `plot_canvas.py`, `export_utils.py` |
-| `openpyxl` | ≥3.0 | Tạo file Excel có định dạng màu/font | `export_utils.py` |
-| `reportlab` | ≥3.5 | Tạo file PDF | `export_utils.py` |
-| `re` | stdlib | Regex xử lý đường dẫn file kéo-thả | `main_window.py` |
-| `csv` | stdlib | Đọc file CSV (format cũ) | `file_io.py` |
-| `os` | stdlib | Kiểm tra tồn tại file, thao tác đường dẫn | Nhiều module |
-| `threading` | stdlib | Chạy batch không block UI | `main_window.py` |
-| `PyPDF2` | ≥2.0 | Gộp nhiều PDF thành 1 file tổng hợp | `main_window.py` (optional) |
-| `datetime` | stdlib | Thêm timestamp vào báo cáo | `export_utils.py` |
+| Thư viện      | Phiên bản | Mục đích                                       | Module sử dụng                                    |
+| --------------- | ----------- | ------------------------------------------------- | --------------------------------------------------- |
+| `numpy`       | ≥1.20      | Ma trận tọa độ, tính Ix/Iy, vectorized math  | `blackbox.py`, `mechanics.py`, `generator.py` |
+| `tkinter`     | stdlib      | Giao diện cửa sổ, widget, event                | `main_window.py`                                  |
+| `tkinterdnd2` | ≥0.3       | Hỗ trợ kéo-thả file vào cửa sổ             | `main.py`, `main_window.py`                     |
+| `matplotlib`  | ≥3.3       | Vẽ mặt bằng cọc, heatmap, colorbar            | `plot_canvas.py`, `export_utils.py`             |
+| `openpyxl`    | ≥3.0       | Tạo file Excel có định dạng màu/font        | `export_utils.py`                                 |
+| `reportlab`   | ≥3.5       | Tạo file PDF                                     | `export_utils.py`                                 |
+| `re`          | stdlib      | Regex xử lý đường dẫn file kéo-thả        | `main_window.py`                                  |
+| `csv`         | stdlib      | Đọc file CSV (format cũ)                       | `file_io.py`                                      |
+| `os`          | stdlib      | Kiểm tra tồn tại file, thao tác đường dẫn | Nhiều module                                       |
+| `threading`   | stdlib      | Chạy batch không block UI                       | `main_window.py`                                  |
+| `PyPDF2`      | ≥2.0       | Gộp nhiều PDF thành 1 file tổng hợp          | `main_window.py` (optional)                       |
+| `datetime`    | stdlib      | Thêm timestamp vào báo cáo                    | `export_utils.py`                                 |
 
 ### 6.5 Biến & Hằng số quan trọng
 
-| Biến | Kiểu | Ý nghĩa | Đơn vị |
-|------|------|---------|--------|
-| `L_X` | float | Chiều rộng bệ móng | m |
-| `L_Y` | float | Chiều dài bệ móng | m |
-| `D_PILE` / `d` | float | Đường kính cọc | m |
-| `SAFE_D` | float | Khoảng cách tối thiểu từ tim cọc ngoài đến mép bệ | m (= d) |
-| `P_LIMIT` / `Po` | float | Sức chịu nén cho phép của cọc | T (Tấn) |
-| `P_TENSION` / `Ct` | float | Sức chịu nhổ cho phép | T |
-| `M_LIMIT` | float | Sức chịu uốn cho phép, 0 = không kiểm tra | T.m |
-| `sx`, `sy` | float | Khoảng cách tim cọc theo X, Y | m |
-| `nx`, `ny` | int | Số cọc theo X, Y | — |
-| `coords` | np.ndarray `(n, 2)` | Ma trận tọa độ [x, y] của n cọc | m |
-| `loads` | list of dict | Danh sách tổ hợp tải trọng | kN, kNm |
-| `N` | float | Lực dọc (nén dương) | kN |
-| `Mx`, `My` | float | Momen uốn tại đáy bệ | kNm |
-| `pmax` | float | Lực nén lớn nhất trong nhóm cọc | T |
-| `pmin` | float | Lực nhổ lớn nhất (âm) | T |
-| `K` | float | Hệ số hiệu chỉnh Calibration | — |
-| `calibration_factor` | float | Tên thay thế của K trong UI | — |
-| `mock_mode` | bool | `True` = dùng Bệ Cứng; `False` = gọi subprocess FEM | — |
+| Biến                  | Kiểu                 | Ý nghĩa                                                    | Đơn vị |
+| ---------------------- | --------------------- | ------------------------------------------------------------ | --------- |
+| `L_X`                | float                 | Chiều rộng bệ móng                                       | m         |
+| `L_Y`                | float                 | Chiều dài bệ móng                                        | m         |
+| `D_PILE` / `d`     | float                 | Đường kính cọc                                          | m         |
+| `SAFE_D`             | float                 | Khoảng cách tối thiểu từ tim cọc ngoài đến mép bệ | m (= d)   |
+| `P_LIMIT` / `Po`   | float                 | Sức chịu nén cho phép của cọc                          | T (Tấn)  |
+| `P_TENSION` / `Ct` | float                 | Sức chịu nhổ cho phép                                    | T         |
+| `M_LIMIT`            | float                 | Sức chịu uốn cho phép, 0 = không kiểm tra              | T.m       |
+| `sx`, `sy`         | float                 | Khoảng cách tim cọc theo X, Y                             | m         |
+| `nx`, `ny`         | int                   | Số cọc theo X, Y                                           | —        |
+| `coords`             | np.ndarray `(n, 2)` | Ma trận tọa độ [x, y] của n cọc                        | m         |
+| `loads`              | list of dict          | Danh sách tổ hợp tải trọng                              | kN, kNm   |
+| `N`                  | float                 | Lực dọc (nén dương)                                     | kN        |
+| `Mx`, `My`         | float                 | Momen uốn tại đáy bệ                                    | kNm       |
+| `pmax`               | float                 | Lực nén lớn nhất trong nhóm cọc                        | T         |
+| `pmin`               | float                 | Lực nhổ lớn nhất (âm)                                   | T         |
+| `K`                  | float                 | Hệ số hiệu chỉnh Calibration                             | —        |
+| `calibration_factor` | float                 | Tên thay thế của K trong UI                               | —        |
+| `mock_mode`          | bool                  | `True` = dùng Bệ Cứng; `False` = gọi subprocess FEM  | —        |
 
 ---
 
@@ -670,15 +681,15 @@ Xuất file TXT định dạng chuẩn MCOC, có thêm:
 
 Khi mở chương trình, UI đã có sẵn dữ liệu mặc định để demo:
 
-| Thông số | Giá trị mặc định | Ý nghĩa |
-|---------|-----------------|---------|
-| Lx (m) | 6.0 | Bệ rộng 6m |
-| Ly (m) | 9.6 | Bệ dài 9.6m |
-| d (m) | 1.2 | Cọc khoan nhồi Ø1200 |
-| Po (T) | 500.0 | Sức chịu nén |
-| Ct (T) | 0.0 | Không kiểm tra nhổ |
-| M (T.m) | 0.0 | Không kiểm tra uốn |
-| **Tải trọng** | N=2577 kN, Mx=1500, My=1500 | 1 tổ hợp mặc định |
+| Thông số            | Giá trị mặc định       | Ý nghĩa               |
+| --------------------- | --------------------------- | ----------------------- |
+| Lx (m)                | 6.0                         | Bệ rộng 6m            |
+| Ly (m)                | 9.6                         | Bệ dài 9.6m           |
+| d (m)                 | 1.2                         | Cọc khoan nhồi Ø1200 |
+| Po (T)                | 500.0                       | Sức chịu nén         |
+| Ct (T)                | 0.0                         | Không kiểm tra nhổ   |
+| M (T.m)               | 0.0                         | Không kiểm tra uốn   |
+| **Tải trọng** | N=2577 kN, Mx=1500, My=1500 | 1 tổ hợp mặc định  |
 
 → Nhấn **▶ CHẠY TỐI ƯU HÓA** ngay, không cần nhập file.
 
@@ -699,14 +710,14 @@ Hx,Hy,P,Mx,My,Mz
 
 **Giải thích từng dòng:**
 
-| Dòng | Nội dung | Ý nghĩa |
-|------|---------|---------|
-| 1 | Header thông số bệ | Tên các trường |
-| 2 | Giá trị thông số | Bệ 6×9.6m, cọc Ø1.2m, Po=500T |
-| 3 | Header tải trọng | Ký hiệu 6 thành phần |
-| 4 | Tổ hợp tải 1 | N=2577 kN, Mx=My=1500 kNm |
-| 5 | Tổ hợp tải 2 | N=2400 kN, Mx=800, My=2000 kNm |
-| 6 | Tổ hợp tải 3 | N=2800 kN, Mx=1800, My=1200 kNm |
+| Dòng | Nội dung             | Ý nghĩa                         |
+| ----- | --------------------- | --------------------------------- |
+| 1     | Header thông số bệ | Tên các trường                |
+| 2     | Giá trị thông số  | Bệ 6×9.6m, cọc Ø1.2m, Po=500T |
+| 3     | Header tải trọng    | Ký hiệu 6 thành phần          |
+| 4     | Tổ hợp tải 1       | N=2577 kN, Mx=My=1500 kNm         |
+| 5     | Tổ hợp tải 2       | N=2400 kN, Mx=800, My=2000 kNm    |
+| 6     | Tổ hợp tải 3       | N=2800 kN, Mx=1800, My=1200 kNm   |
 
 ---
 
@@ -868,12 +879,14 @@ print("\n" + "=" * 60)
 ```
 
 **Chạy:**
+
 ```bash
 cd d:\Project\TEDI\OptApp
 python test_run.py
 ```
 
 **Output mẫu:**
+
 ```
 ============================================================
 OPT APP — Tối Ưu Hóa Bố Trí Cọc Móng Cầu
@@ -1000,5 +1013,5 @@ python test_stiffness.py     # Kiểm tra công thức bệ cứng
 
 ---
 
-*Tài liệu được tạo tự động từ mã nguồn OptApp – phiên bản hiện tại.*  
+*Tài liệu được tạo tự động từ mã nguồn OptApp – phiên bản hiện tại.*
 *Cập nhật: 2026-06-10*

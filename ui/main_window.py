@@ -2,7 +2,11 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from tkinterdnd2 import DND_FILES
 from core.optimizer import run_optimization
+from core.refine_optimizer import run_refinement, run_pareto_refinement
+from core.blackbox import MCOCBlackbox
 from core.mechanics import check_layout
+import threading
+import os  # noqa: E402
 from core.generator import generate_coords
 from io_handlers.file_io import parse_input_file, export_output_file
 from ui.plot_canvas import PlotCanvas
@@ -46,6 +50,9 @@ class MainWindow:
             'exe_path': tk.StringVar(value=''),
             'mock_mode': tk.BooleanVar(value=True)
         }
+        # Che do Hop den MCOC thuc (tinh chinh tung buoc)
+        self.var_use_real = tk.BooleanVar(value=False)
+        self.input_filepath = ''   # file input MCOC goc (template sinh phuong an moi)
         # Cờ xuất file (chỉ dùng trong save_file)
         self.var_export_cti = tk.BooleanVar(value=False)
         
@@ -154,7 +161,35 @@ class MainWindow:
         self.output_option = tk.StringVar(value="BEST")
         ttk.Radiobutton(frame_run, text="Chỉ xuất tối ưu", variable=self.output_option, value="BEST").pack(side=tk.LEFT)
         ttk.Radiobutton(frame_run, text="Xuất tất cả", variable=self.output_option, value="ALL").pack(side=tk.LEFT, padx=10)
-        
+
+        # --- HOP DEN MCOC (goi chuong trinh thuc + tinh chinh tung buoc) ---
+        frame_mcoc = tk.LabelFrame(tab_params, text="Hộp đen MCOC (gọi chương trình thực)", padx=10, pady=5)
+        frame_mcoc.pack(fill=tk.X, pady=5)
+
+        row_exe = tk.Frame(frame_mcoc)
+        row_exe.pack(fill=tk.X, pady=2)
+        ttk.Label(row_exe, text="MCOC Batch:").pack(side=tk.LEFT)
+        self.txt_exe_path = ttk.Entry(row_exe, textvariable=self.params['exe_path'])
+        self.txt_exe_path.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
+        ttk.Button(row_exe, text="...", width=3, command=self.browse_exe).pack(side=tk.LEFT)
+
+        self.chk_use_real = ttk.Checkbutton(
+            frame_mcoc,
+            text="Gọi MCOC thực — tinh chỉnh từng bước (cần file input MCOC gốc)",
+            variable=self.var_use_real)
+        self.chk_use_real.pack(anchor="w", pady=2)
+
+        # Che do toi uu
+        self.var_refine_mode = tk.StringVar(value="full")
+        row_mode = tk.Frame(frame_mcoc)
+        row_mode.pack(fill=tk.X, pady=2)
+        ttk.Radiobutton(row_mode, text="Khoảng cách + giảm số cọc",
+                        variable=self.var_refine_mode, value="full").pack(side=tk.LEFT)
+        ttk.Radiobutton(row_mode, text="Chỉ khoảng cách (giữ số cọc)",
+                        variable=self.var_refine_mode, value="spacing").pack(side=tk.LEFT, padx=10)
+        self.lbl_template = ttk.Label(frame_mcoc, text="File input gốc: (chưa có)", foreground="gray")
+        self.lbl_template.pack(anchor="w")
+
         tk.Button(tab_params, text="▶ CHẠY TỐI ƯU HÓA", font=("Arial", 14, "bold"), bg="#27ae60", fg="white", command=self.run_optimize).pack(fill=tk.X, pady=15, ipady=8)
         
         frame_res = tk.LabelFrame(tab_params, text="Kết quả Đánh giá", padx=10, pady=5)
@@ -373,10 +408,11 @@ class MainWindow:
 
 
     def browse_exe(self):
-        filepath = filedialog.askopenfilename(filetypes=[("Executable Files", "*.exe"), ("All Files", "*.*")])
+        filepath = filedialog.askopenfilename(
+            title="Chọn MCOC Batch (Command Line)",
+            filetypes=[("MCOC Batch", "*.lnk;*.exe;*.bat;*.cmd;*.py"), ("All Files", "*.*")])
         if filepath:
-            self.txt_exe_path.delete(0, tk.END)
-            self.txt_exe_path.insert(0, filepath)
+            self.params['exe_path'].set(filepath)
 
     def load_file(self):
         filepaths = filedialog.askopenfilenames(filetypes=[
@@ -426,7 +462,16 @@ class MainWindow:
                 if 'orig_mxmax' in params: self.orig_mxmax = params['orig_mxmax']
                 if 'orig_mymax' in params: self.orig_mymax = params['orig_mymax']
                 self.result_filepath = filepath  # Lưu đường dẫn để blackbox đọc đúng file
-                            
+
+                # Neu la file INPUT MCOC (khong phai file ket qua/CSV) -> dung lam
+                # template sinh phuong an moi khi goi MCOC thuc
+                if proj_name != 'Imported from Result' and not filepath.lower().endswith('.csv') \
+                        and 'original_coords' in params:
+                    self.input_filepath = filepath
+                    if hasattr(self, 'lbl_template'):
+                        self.lbl_template.config(
+                            text="File input gốc: " + os.path.basename(filepath), foreground="black")
+
                 self.loads = loads
                 total_new_loads += len(loads)
                 success_count += 1
@@ -527,10 +572,15 @@ class MainWindow:
             messagebox.showerror("Lỗi", f"Không thể xuất file: {str(e)}\n\n{traceback.format_exc()[-300:]})")
 
     def run_optimize(self):
+        # Che do HOP DEN THUC: goi MCOC + tinh chinh tung buoc
+        if self.var_use_real.get():
+            self.run_refine_real()
+            return
+
         self.txt_result.delete(1.0, tk.END)
         self.txt_result.insert(tk.END, "Dang tim kiem...\n")
         self.root.update()
-        
+
         results = run_optimization(self.get_params_dict(), self.loads)
         self.current_config = results
         self.txt_result.delete(1.0, tk.END)
@@ -604,6 +654,95 @@ class MainWindow:
             # Van populate comboboxes va ve mo phong cho phuong an goc (du KHONG DAT)
             self.populate_comboboxes(results)
 
+    # ───────── HOP DEN MCOC THUC: tinh chinh tung buoc ─────────
+
+    def _log_refine(self, msg):
+        """Ghi log tu thread tinh chinh len o ket qua (thread-safe)."""
+        def _append():
+            self.txt_result.insert(tk.END, msg + "\n")
+            self.txt_result.see(tk.END)
+        self.root.after(0, _append)
+
+    def run_refine_real(self):
+        exe = self.params['exe_path'].get().strip()
+        if not exe:
+            messagebox.showwarning("Thiếu MCOC", "Chưa chọn đường dẫn MCOC Batch (Command Line).")
+            return
+        if not self.input_filepath or not os.path.exists(self.input_filepath):
+            messagebox.showwarning(
+                "Thiếu file input gốc",
+                "Chế độ MCOC thực cần file INPUT MCOC gốc làm template.\n"
+                "Hãy load file input (.txt/.dat) của MCOC — không phải file _result.")
+            return
+        if not getattr(self, 'original_coords', None):
+            messagebox.showwarning("Thiếu phương án gốc", "File input chưa có tọa độ cọc gốc.")
+            return
+
+        self.txt_result.delete(1.0, tk.END)
+        self.txt_result.insert(tk.END, "=== HOP DEN MCOC THUC - TINH CHINH TUNG BUOC ===\n")
+
+        params = self.get_params_dict()
+        params['input_filepath'] = self.input_filepath
+        params['mock_mode'] = False
+        params['refine_mode'] = self.var_refine_mode.get()
+        loads = list(self.loads)
+
+        def worker():
+            try:
+                # Kiem tra template truoc khi chay
+                from io_handlers.mcoc_writer import self_check
+                ok, msg = self_check(self.input_filepath, params['original_coords'])
+                if not ok:
+                    self._log_refine("LOI TEMPLATE: " + msg)
+                    return
+                self._log_refine("Template: " + msg)
+
+                evaluator = MCOCBlackbox.make_real_evaluator(params, log=self._log_refine)
+                results = run_pareto_refinement(params, loads, evaluator, log=self._log_refine)
+                self.root.after(0, lambda: self._show_refine_results(results))
+            except Exception as e:
+                self._log_refine("LOI: %s" % e)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_refine_results(self, results):
+        """Chuyen ket qua tinh chinh ve cau truc cu de tai dung combobox/canvas."""
+        def to_cfg(rec, type_name):
+            if rec is None:
+                return None
+            return {
+                'type': type_name, 'nx': 0, 'ny': 0, 'sx': 0, 'sy': 0,
+                'n': rec['n'], 'coords': rec['coords'],
+                'pmax': rec['pmax'], 'pmin': rec['pmin'],
+                'mxmax': rec['mxmax'], 'mymax': rec['mymax'],
+                'forces': [], 'ok': rec['ok'],
+                'msg': rec['label'] + ("" if rec['ok'] else ": " + "; ".join(rec['errs'])),
+            }
+
+        valid_steps = [to_cfg(r, 'TinhChinh') for r in results['history'] if r['ok']]
+        self.current_config = {
+            'original_config': to_cfg(results['original'], 'Goc'),
+            'recommended': to_cfg(results['best'], 'TinhChinh'),
+            'best_A': None, 'best_B': None,
+            'all_valid_configs': valid_steps,
+            'all_candidates': [],
+            'reason': results['reason'],
+        }
+
+        best = results['best']
+        self.txt_result.insert(tk.END, "\n=== KET LUAN ===\n")
+        if best:
+            orig = results['original']
+            self.txt_result.insert(tk.END,
+                "  Goc   : %d coc, Pmax = %.2f T\n" % (orig['n'], orig['pmax']))
+            self.txt_result.insert(tk.END,
+                "  Toi uu: %d coc, Pmax = %.2f T, Pmin = %.2f T\n"
+                % (best['n'], best['pmax'], best['pmin']))
+            self.txt_result.insert(tk.END,
+                "  So lan goi MCOC: %d\n" % results['n_calls'])
+        self.txt_result.insert(tk.END, "  %s\n" % results['reason'])
+        self.populate_comboboxes(self.current_config)
+
     def update_simulation(self, event=None):
         if not self.current_config: return
         
@@ -635,10 +774,19 @@ class MainWindow:
         
         calibration_factor = 1.0
         params_dict = self.get_params_dict()
-        orig_pmax_actual = params_dict.get('orig_pmax', 519.63)
-            
-        if hasattr(self, 'original_coords') and self.original_coords and self.loads:
+
+        # Uu tien: hieu chinh theo Pmax THUC (MCOC) cua chinh phuong an dang xem,
+        # de luc ve tren canvas khop voi ket qua o phan ket luan.
+        cfg_pmax = selected_cfg.get('pmax', 0) or 0
+        cfg_rigid_pmax = 0.0
+        if self.loads:
             from core.blackbox import MCOCBlackbox
+            cfg_rigid_pmax = MCOCBlackbox._rigid_cap_pmax(coords, self.loads)
+        if cfg_pmax > 0 and cfg_rigid_pmax > 0:
+            calibration_factor = cfg_pmax / cfg_rigid_pmax
+        elif hasattr(self, 'original_coords') and self.original_coords and self.loads:
+            from core.blackbox import MCOCBlackbox
+            orig_pmax_actual = params_dict.get('orig_pmax', 519.63)
             orig_arr = np.array(self.original_coords)
             orig_rigid_pmax = MCOCBlackbox._rigid_cap_pmax(orig_arr, self.loads)
             if orig_rigid_pmax > 0:
