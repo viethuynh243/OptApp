@@ -5,6 +5,14 @@ def check_layout(coords, nx, ny, sx, sy, layout_type, params, loads):
     """
     Kiểm tra một phương án (coords) với tất cả các tổ hợp tải trọng.
     Trả về: (is_ok, pmax, pmin, mxmax, mymax, p_forces, message)
+
+    Ràng buộc kiểm tra:
+        R1: Pmax ≤ P_LIMIT     — không cọc nào bị nén vượt giới hạn
+        R2: Pmin ≥ -P_TENSION  — không cọc nào bị nhổ vượt giới hạn
+        R3: 3d ≤ spacing ≤ 6d  — khoảng cách tim-tim đảm bảo thi công
+        R4: cọc ngoài cách mép bệ ≥ SAFE_D  — cọc không phá vỡ bệ
+        R5: Mx_max ≤ M_LIMIT   — momen uốn X trong giới hạn
+        R6: My_max ≤ M_LIMIT   — momen uốn Y trong giới hạn
     """
     L_X = params['L_X']
     L_Y = params['L_Y']
@@ -26,16 +34,30 @@ def check_layout(coords, nx, ny, sx, sy, layout_type, params, loads):
         geo_errors.append(f"Vi pham mep be (Y={max_y:.2f})")
         
     if layout_type == "A":
+        # R3: khoảng cách ngang sx và dọc sy đều phải trong [3d, 6d]
         if nx > 1 and not (3*d - 1e-4 <= sx <= 6*d + 1e-4):
             geo_errors.append("sx vi pham 3d-6d")
         if ny > 1 and not (3*d - 1e-4 <= sy <= 6*d + 1e-4):
             geo_errors.append("sy vi pham 3d-6d")
     elif layout_type == "B":
+        # R3: khoảng cách ngang sx (cùng hàng) và đường chéo diag (hàng liền kề) trong [3d, 6d]
         if nx > 1 and not (3*d - 1e-4 <= sx <= 6*d + 1e-4):
             geo_errors.append("sx vi pham 3d-6d")
         diag = np.sqrt((sx/2)**2 + sy**2)
         if ny > 1 and not (3*d - 1e-4 <= diag <= 6*d + 1e-4):
             geo_errors.append("khoang cach cheo vi pham 3d-6d")
+    else:
+        # Phương án gốc / bố trí tùy ý: kiểm tra khoảng cách nhỏ nhất giữa mọi cặp cọc
+        if n_piles > 1:
+            dists = []
+            for i in range(n_piles):
+                for j in range(i + 1, n_piles):
+                    dx = coords[i, 0] - coords[j, 0]
+                    dy = coords[i, 1] - coords[j, 1]
+                    dists.append(np.sqrt(dx*dx + dy*dy))
+            s_min = min(dists)
+            if s_min < 3*d - 1e-4:
+                geo_errors.append(f"khoang cach nho nhat {s_min:.2f}m < 3d={3*d:.2f}m")
         
     # Đánh giá nội lực (Black-box)
     mock_mode = params.get('mock_mode', True)

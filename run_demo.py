@@ -163,6 +163,54 @@ def print_recommendation(rec, reason):
     print(f"  {'-'*64}")
 
 
+def print_pile_forces(rec, all_loads, p_limit, p_tension):
+    """
+    In bảng nội lực từng cọc cho tổ hợp tải bất lợi nhất.
+    Lực từng cọc được tính theo công thức bệ cứng (rigid pile cap).
+    """
+    import numpy as np
+    from core.blackbox import MCOCBlackbox
+
+    coords = np.array(rec['coords'], dtype=float)
+    n = len(coords)
+
+    # Tìm tổ hợp tải bất lợi nhất và lực từng cọc tương ứng
+    best_forces = None
+    best_pmax = -1e18
+    worst_th = 0
+    for th_idx, load in enumerate(all_loads):
+        forces = MCOCBlackbox._rigid_cap_forces_worst(coords, [load])
+        if forces and max(forces) > best_pmax:
+            best_pmax = max(forces)
+            best_forces = forces
+            worst_th = th_idx + 1
+
+    if best_forces is None:
+        print("  (Khong tinh duoc noi luc)")
+        return
+
+    # Hiệu chỉnh về đơn vị đã calibrate (khớp với Pmax báo cáo)
+    raw_pmax = max(best_forces)
+    cfg_pmax = rec.get('pmax', 0) or 0
+    calib = (cfg_pmax / raw_pmax) if (raw_pmax > 0 and cfg_pmax > 0) else 1.0
+
+    print(f"\n  BANG NOI LUC TUNG COC (To hop {worst_th} - bat loi nhat, Pmax={cfg_pmax:.2f}T):")
+    print(f"  {'Coc':>5} {'P (T)':>12} {'Trang thai':>16}")
+    print("  " + "-" * 36)
+    for i, p_raw in enumerate(best_forces):
+        p = p_raw * calib
+        if p > p_limit + 1e-4:
+            status = f"VUOT NEN ({p_limit:.0f}T)"
+        elif p_tension > 0 and p < -p_tension - 1e-4:
+            status = f"VUOT NHO ({p_tension:.0f}T)"
+        elif p < 0:
+            status = "Chiu keo (OK)"
+        else:
+            status = "OK"
+        print(f"  {i+1:>5} {p:>12.2f} {status:>16}")
+    print(f"\n  Pmax = {max(best_forces)*calib:.2f} T  |  Pmin = {min(best_forces)*calib:.2f} T")
+
+
 if __name__ == "__main__":
     print_header()
     print_loads()
@@ -173,7 +221,10 @@ if __name__ == "__main__":
 
     print_original(results.get('original_config'))
     print_candidates(results.get('all_candidates', []))
-    print_recommendation(results.get('recommended'), results.get('reason', ''))
+    rec = results.get('recommended')
+    print_recommendation(rec, results.get('reason', ''))
+    if rec:
+        print_pile_forces(rec, loads, params['P_LIMIT'], params.get('P_TENSION', 0.0))
 
     print(f"\n  [Time] Thoi gian tinh toan: {elapsed*1000:.1f} ms")
     print(LINE + "\n")

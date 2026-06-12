@@ -4,7 +4,15 @@ from core.mechanics import check_layout
 
 def run_optimization(params, loads):
     """
-    Thuật toán tìm cấu hình cọc tối ưu và so sánh Kiểu A, Kiểu B.
+    Tìm cấu hình cọc tối ưu (ít cọc nhất) cho Kiểu A và Kiểu B.
+
+    Chiến lược tìm kiếm (Grid Search):
+        Duyệt toàn bộ (nx, ny) từ 2..10 cho mỗi kiểu bố trí.
+        Với mỗi (nx, ny), dùng sx = sx_max và sy = sy_max (khoảng cách lớn nhất
+        trong phạm vi [3d, 6d] và kích thước bệ) để phân tán cọc tối đa
+        → giảm Pmax. Đây là nghiệm tối ưu cho khoảng cách cố định (nx, ny).
+
+    Tiêu chí chọn phương án: (1) ít cọc nhất; (2) cùng số cọc thì Pmax nhỏ hơn.
     """
     L_X = params['L_X']
     L_Y = params['L_Y']
@@ -26,9 +34,19 @@ def run_optimization(params, loads):
                 
                 sx_max = min(6.0*d, (L_X - 2*SAFE_D)/(nx-1) if nx > 1 else 0)
                 sy_max = min(6.0*d, (L_Y - 2*SAFE_D)/(ny-1) if ny > 1 else 0)
-                
-                if sx_max < 3.0*d or sy_max < 3.0*d:
-                    continue
+
+                # Kiểm tra khoảng cách tối thiểu khả thi với kích thước bệ:
+                # Kiểu A: min-spacing = min(sx, sy) >= 3d
+                # Kiểu B: hàng lẻ lệch sx/2 → min-spacing = min(sx, diag) với diag = sqrt((sx/2)²+sy²)
+                if layout_type == "A":
+                    if sx_max < 3.0*d or sy_max < 3.0*d:
+                        continue
+                else:  # Kiểu B
+                    if sx_max < 3.0*d:
+                        continue
+                    diag_max = np.sqrt((sx_max / 2.0)**2 + sy_max**2)
+                    if diag_max < 3.0*d:
+                        continue
                     
                 coords = generate_coords(nx, ny, sx_max, sy_max, layout_type)
                 n = len(coords)
