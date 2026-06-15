@@ -1,11 +1,15 @@
 """
-run_demo.py - Script demo chay OptApp truc tiep (khong can giao dien).
+run_demo.py - Script demo chạy OptApp trực tiếp (không cần giao diện đồ họa).
 
-Huong dan:
+Chạy toàn bộ quy trình tối ưu bố trí cọc từ dòng lệnh: nhập thông số bệ - cọc,
+nhập các tổ hợp tải trọng, gọi bộ tối ưu rồi in báo cáo ra màn hình (phương án
+gốc, các phương án quét được, phương án kiến nghị và bảng nội lực từng cọc).
+
+Cách chạy:
     cd d:/Project/TEDI/OptApp
     python run_demo.py
 
-Thay doi du lieu trong block '=== NHAP DU LIEU ===' de thu nghiem.
+Thay đổi dữ liệu trong block '=== NHAP DU LIEU ===' để thử nghiệm các kịch bản.
 """
 
 import sys
@@ -13,10 +17,10 @@ import os
 import time
 import io
 
-# Fix Windows console encoding to UTF-8
+# Ép mã hóa console Windows về UTF-8 để in được tiếng Việt có dấu
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
-# Ensure imports work from project root
+# Bảo đảm import được từ thư mục gốc dự án
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.optimizer import run_optimization
@@ -25,7 +29,7 @@ from core.mechanics import check_layout
 
 # =============================================================================
 # === NHAP DU LIEU TUY Y TAI DAY ===
-# Thay doi cac gia tri ben duoi de kiem thu cac kich ban khac nhau.
+# Thay đổi các giá trị bên dưới để kiểm thử các kịch bản khác nhau.
 # =============================================================================
 
 SCENARIO = "T1_EXT"   # Ten kich ban (chi de hien thi)
@@ -68,11 +72,13 @@ loads = [
 
 # =============================================================================
 # === CHAY TOI UU & IN KET QUA ===
+# Các hàm in báo cáo bên dưới chỉ định dạng và xuất kết quả ra màn hình.
 # =============================================================================
 
 LINE = "=" * 70
 
 def print_header():
+    """In tiêu đề: tên kịch bản, kích thước bệ - cọc và các sức chịu cho phép."""
     print(LINE)
     print(f"  OPT APP - Toi Uu Hoa Bo Tri Coc Mong Cau")
     print(f"  Kich ban: {SCENARIO}")
@@ -84,6 +90,7 @@ def print_header():
 
 
 def print_loads():
+    """In bảng các tổ hợp tải trọng (N, Mx, My) đưa vào tính toán."""
     print(f"\n  TO HOP TAI TRONG")
     print(f"  {'TH':<4} {'N (kN)':>10} {'Mx (kNm)':>10} {'My (kNm)':>10}")
     print("  " + "-" * 38)
@@ -92,6 +99,7 @@ def print_loads():
 
 
 def print_original(orig):
+    """In thông tin phương án gốc (số cọc, Pmax, Pmin, Mmax) và trạng thái đạt/không đạt."""
     if not orig:
         return
     status = "[DAT]" if orig['ok'] else "[KHONG DAT]"
@@ -109,6 +117,7 @@ def print_original(orig):
 
 
 def print_candidates(all_cands):
+    """In thống kê các phương án đã quét: số phương án đạt/không đạt và bảng phương án đạt."""
     valid   = [c for c in all_cands if c['ok']]
     invalid = [c for c in all_cands if not c['ok']]
 
@@ -127,6 +136,7 @@ def print_candidates(all_cands):
 
 
 def print_recommendation(rec, reason):
+    """In phương án kiến nghị chi tiết: kiểu bố trí, lưới, khoảng cách, nội lực và tọa độ cọc."""
     print(f"\n  {'='*64}")
     print(f"  PHUONG AN KIEN NGHI")
     print(f"  {'='*64}")
@@ -154,7 +164,7 @@ def print_recommendation(rec, reason):
         print(f"  Mmax        : {mmax:.2f} T.m  (gioi han: {params['M_LIMIT']} T.m)")
     print(f"  Ly do chon  : {reason}")
 
-    # In toa do coc
+    # In bảng tọa độ đầu cọc của phương án kiến nghị
     print(f"\n  TOA DO DAU COC:")
     print(f"  {'Coc':>5} {'X (m)':>10} {'Y (m)':>10}")
     print("  " + "-" * 30)
@@ -163,17 +173,62 @@ def print_recommendation(rec, reason):
     print(f"  {'-'*64}")
 
 
+def print_pile_forces(rec):
+    """In bảng nội lực từng cọc cho tổ hợp tải bất lợi nhất (theo công thức bệ cứng)."""
+    if not rec:
+        return
+    from io_handlers.export_utils import calculate_pile_forces
+
+    # Tính nội lực từng cọc cho mọi tổ hợp tải trọng
+    forces_by_load = calculate_pile_forces(rec['coords'], loads)
+    if not forces_by_load:
+        return
+
+    # Quy về cùng đơn vị với Pmax đã hiệu chỉnh (T):
+    # calib = Pmax hiệu chỉnh / Pmax thô lớn nhất (công thức bệ cứng)
+    raw_pmax = max((max(v) for v in forces_by_load.values() if v), default=0.0)
+    cfg_pmax = rec.get('pmax', 0) or 0
+    calib = (cfg_pmax / raw_pmax) if (raw_pmax > 0 and cfg_pmax > 0) else 1.0
+
+    # Tìm tổ hợp bất lợi nhất (Pmax lớn nhất)
+    worst_i = max(forces_by_load, key=lambda i: max(forces_by_load[i]))
+
+    P_LIMIT = params['P_LIMIT']
+    P_TENSION = params['P_TENSION']
+
+    print(f"\n  BANG NOI LUC TUNG COC (to hop bat loi nhat: TH{worst_i+1})")
+    print(f"  {'Coc':>5} {'X (m)':>10} {'Y (m)':>10} {'P (T)':>10}  Trang thai")
+    print("  " + "-" * 52)
+    for i, ((x, y), p_raw) in enumerate(zip(rec['coords'], forces_by_load[worst_i])):
+        p = p_raw * calib
+        if p > P_LIMIT:
+            status = "VUOT NEN!"
+        elif P_TENSION > 0 and p < -P_TENSION:
+            status = "VUOT NHO!"
+        else:
+            status = "OK"
+        print(f"  {i+1:>5} {x:>10.3f} {y:>10.3f} {p:>10.2f}  {status}")
+    print("  " + "-" * 52)
+    print(f"  Pmax = {max(forces_by_load[worst_i])*calib:.2f} T  |  "
+          f"Pmin = {min(forces_by_load[worst_i])*calib:.2f} T  |  [Po] = {P_LIMIT} T")
+
+
 if __name__ == "__main__":
+    # In phần đầu báo cáo: tiêu đề và tổ hợp tải trọng
     print_header()
     print_loads()
 
+    # Chạy bộ tối ưu và đo thời gian tính toán
     t0 = time.perf_counter()
     results = run_optimization(params, loads)
     elapsed = time.perf_counter() - t0
 
+    # In các phần kết quả: phương án gốc, phương án quét, kiến nghị, nội lực cọc
     print_original(results.get('original_config'))
     print_candidates(results.get('all_candidates', []))
     print_recommendation(results.get('recommended'), results.get('reason', ''))
+    print_pile_forces(results.get('recommended'))
 
     print(f"\n  [Time] Thoi gian tinh toan: {elapsed*1000:.1f} ms")
     print(LINE + "\n")
+

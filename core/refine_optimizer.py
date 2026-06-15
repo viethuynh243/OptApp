@@ -1,65 +1,53 @@
 """
-refine_optimizer.py - Toi uu hoa kieu HOP DEN + TINH CHINH TUNG BUOC TREN LUOI.
+refine_optimizer.py - Tối ưu hóa kiểu HỘP ĐEN + TINH CHỈNH TỪNG BƯỚC TRÊN LƯỚI.
 
-NGUYEN TAC BO TRI (kien thuc mong coc cau):
-    - Coc LUON nam tren luoi diem deu, doi xung qua tam be, theo 2 dang:
-        Kieu A (luoi truc giao)  :  o o o     Kieu B (hoa mai / so le):  o o o
+NGUYÊN TẮC BỐ TRÍ (kiến thức móng cọc cầu):
+    - Cọc LUÔN nằm trên lưới điểm đều, đối xứng qua tâm bệ, theo 2 dạng:
+        Kiểu A (lưới trực giao)  :  o o o     Kiểu B (hoa mai / so le):  o o o
                                     o o o                                  o o
                                     o o o                                 o o o
-    - KHONG bao gio bo coc don le (mat doi xung, mat goi do goc).
-    - Kich thuoc luoi (sx, sy) co dan tung buoc nho trong mien gioi han
-      khoang cach tim-den-tim (3d..6d) va khoang cach mep be.
+    - KHÔNG bao giờ bỏ cọc đơn lẻ (mất đối xứng, mất gối đỡ góc).
+    - Kích thước lưới (sx, sy) co dãn từng bước nhỏ trong miền giới hạn
+      khoảng cách tim-đến-tim (3d..6d) và khoảng cách mép bệ.
 
-CAC BUOC TINH CHINH (moi vong chon 1 buoc tot nhat):
-    (a) co sx mot nac nho          (b) co sy mot nac nho
-    (c) bo nguyen 1 COT (nx-1)     (d) bo nguyen 1 HANG (ny-1)
-    (e) chuyen luoi A -> hoa mai B (tiet kiem floor(ny/2) coc)
+CÁC BƯỚC TINH CHỈNH (mỗi vòng chọn 1 bước tốt nhất):
+    (a) co sx một nấc nhỏ          (b) co sy một nấc nhỏ
+    (c) bỏ nguyên 1 CỘT (nx-1)     (d) bỏ nguyên 1 HÀNG (ny-1)
+    (e) chuyển lưới A -> hoa mai B (tiết kiệm floor(ny/2) cọc)
 
-Moi buoc duoc DU BAO truoc bang cong thuc be cung (he so hieu chinh
-K = Pmax_MCOC / Pmax_be_cung, cap nhat lai sau moi lan goi MCOC), sau do
-phuong an du bao kha thi se duoc goi MCOC kiem chung that. Vong lap dung
-khi khong con buoc nao cho ket qua DAT tot hon.
+Mỗi bước được DỰ BÁO trước bằng công thức bệ cứng (hệ số hiệu chỉnh
+K = Pmax_MCOC / Pmax_be_cung, cập nhật lại sau mỗi lần gọi MCOC), sau đó
+phương án dự báo khả thi sẽ được gọi MCOC kiểm chứng thật. Vòng lặp dừng
+khi không còn bước nào cho kết quả ĐẠT tốt hơn.
 
-Tieu chi "tot hon": (1) it coc hon; (2) cung so coc thi be gon hon.
+Tiêu chí "tốt hơn": (1) ít cọc hơn; (2) cùng số cọc thì bệ gọn hơn.
 """
 
 import numpy as np
 
+from core import rigid_cap
+
 
 # ============================================================================
-# Cong thuc be cung (chi de DU BAO, ket qua that luon do MCOC quyet dinh)
+# Công thức bệ cứng (chỉ để DỰ BÁO, kết quả thật luôn do MCOC quyết định).
+# Ủy quyền (delegate) sang core.rigid_cap để tránh viết lặp công thức.
 # ============================================================================
 def rigid_forces(coords, loads):
-    coords = np.asarray(coords, dtype=float)
-    n = len(coords)
-    cx, cy = coords[:, 0].mean(), coords[:, 1].mean()
-    dx = coords[:, 0] - cx
-    dy = coords[:, 1] - cy
-    Ix = float(np.sum(dy ** 2)) or 1e-9
-    Iy = float(np.sum(dx ** 2)) or 1e-9
-    P = np.zeros((len(loads), n))
-    for k, ld in enumerate(loads):
-        P[k, :] = ld.get('N', 0.0) / n + ld.get('Mx', 0.0) * dy / Ix \
-                  + ld.get('My', 0.0) * dx / Iy
-    return P
+    """Ma trận lực (len(loads), n) theo bệ cứng — xem rigid_cap.forces_all_loads."""
+    return rigid_cap.forces_all_loads(coords, loads)
 
 
 def rigid_pmax_pmin(coords, loads):
-    P = rigid_forces(coords, loads)
-    return float(P.max()), float(P.min())
+    """(Pmax, Pmin) bệ cứng — xem rigid_cap.pmax_pmin."""
+    return rigid_cap.pmax_pmin(coords, loads)
 
 
-def min_spacing(coords):
-    coords = np.asarray(coords, dtype=float)
-    n = len(coords)
-    if n < 2:
-        return float('inf')
-    d2 = np.sum((coords[:, None, :] - coords[None, :, :]) ** 2, axis=2)
-    d2[np.diag_indices(n)] = np.inf
-    return float(np.sqrt(d2.min()))
+# Alias tương thích ngược (mechanics, nsga2, tests đang import từ đây)
+min_spacing = rigid_cap.min_spacing
 
 
 def footprint(coords):
+    """Tổng kích thước bao (rộng + cao) của cụm cọc — đo độ gọn của bệ."""
     coords = np.asarray(coords, dtype=float)
     w = coords[:, 0].max() - coords[:, 0].min()
     h = coords[:, 1].max() - coords[:, 1].min()
@@ -67,10 +55,10 @@ def footprint(coords):
 
 
 # ============================================================================
-# Luoi diem: nhan dien va sinh toa do
+# Lưới điểm: nhận diện và sinh tọa độ
 # ============================================================================
 def grid_coords(spec):
-    """Sinh toa do tu spec luoi {type,nx,ny,sx,sy,cx,cy} - luon doi xung."""
+    """Sinh tọa độ từ spec lưới {type,nx,ny,sx,sy,cx,cy} - luôn đối xứng."""
     t, nx, ny = spec['type'], spec['nx'], spec['ny']
     sx, sy = spec['sx'], spec['sy']
     cx, cy = spec.get('cx', 0.0), spec.get('cy', 0.0)
@@ -90,7 +78,7 @@ def grid_coords(spec):
 
 
 def _coords_match(a, b, tol=5e-3):
-    """So sanh 2 tap diem (khong phu thuoc thu tu)."""
+    """So sánh 2 tập điểm (không phụ thuộc thứ tự)."""
     a = np.asarray(a, float)
     b = np.asarray(b, float)
     if a.shape != b.shape:
@@ -102,8 +90,8 @@ def _coords_match(a, b, tol=5e-3):
 
 def detect_grid(coords, tol=1e-2):
     """
-    Nhan dien luoi tu toa do goc. Tra ve spec {'type','nx','ny','sx','sy',
-    'cx','cy'} hoac None neu khong phai luoi deu / hoa mai.
+    Nhận diện lưới từ tọa độ gốc. Trả về spec {'type','nx','ny','sx','sy',
+    'cx','cy'} hoặc None nếu không phải lưới đều / hoa mai.
     """
     coords = np.asarray(coords, dtype=float)
     n = len(coords)
@@ -119,7 +107,7 @@ def detect_grid(coords, tol=1e-2):
     row_counts = [len(r) for r in rows]
     nx = max(row_counts)
 
-    # sy: khoang cach hang deu
+    # sy: khoảng cách hàng đều
     if ny > 1:
         dys = np.diff(ys)
         if np.max(dys) - np.min(dys) > tol:
@@ -128,7 +116,7 @@ def detect_grid(coords, tol=1e-2):
     else:
         sy = 0.0
 
-    # sx: tu hang dai nhat
+    # sx: từ hàng dài nhất
     row_long = sorted(rows[int(np.argmax(row_counts))][:, 0])
     if nx > 1:
         dxs = np.diff(row_long)
@@ -150,16 +138,17 @@ def detect_grid(coords, tol=1e-2):
 
 
 def grid_label(spec):
+    """Tạo nhãn mô tả ngắn gọn cho một spec lưới (kiểu, kích thước, bước)."""
     name = "luoi" if spec['type'] == 'A' else "hoa mai"
     return "%s %dx%d, sx=%.2f sy=%.2f" % (name, spec['nx'], spec['ny'],
                                           spec['sx'], spec['sy'])
 
 
 # ============================================================================
-# Rang buoc
+# Ràng buộc
 # ============================================================================
 def check_constraints(coords, res, params):
-    """Kiem tra R1/R2/R3/R4 cho 1 ket qua MCOC. Tra ve (ok, [loi])."""
+    """Kiểm tra R1/R2/R3/R4 cho 1 kết quả MCOC. Trả về (ok, [lỗi])."""
     d = params['D_PILE']
     SAFE_D = params.get('SAFE_D', d)
     P_LIMIT = params.get('P_LIMIT', 500.0)
@@ -177,7 +166,7 @@ def check_constraints(coords, res, params):
         if res.get('mymax', 0) > M_LIMIT:
             errs.append("My=%.1f > M=%.1f" % (res['mymax'], M_LIMIT))
 
-    # San khoang cach tim-tim: 3d nhung khong khat hon hien trang goc
+    # Sàn khoảng cách tim-tim: 3d nhưng không khắt hơn hiện trạng gốc
     floor = params.get('_spacing_floor', 3.0 * d)
     s_min = min_spacing(coords)
     if s_min < floor - 1e-4:
@@ -197,7 +186,7 @@ def check_constraints(coords, res, params):
 
 
 def _spacing_ok(spec, floor):
-    """Khoang cach tim-tim nho nhat cua luoi >= san cho phep."""
+    """Khoảng cách tim-tim nhỏ nhất của lưới >= sàn cho phép."""
     sx, sy, t = spec['sx'], spec['sy'], spec['type']
     if spec['nx'] > 1 and sx < floor - 1e-6:
         return False
@@ -205,7 +194,7 @@ def _spacing_ok(spec, floor):
         if t == 'A':
             if sy < floor - 1e-6:
                 return False
-        else:  # hoa mai: hang ke nhau lech sx/2
+        else:  # hoa mai: hàng kề nhau lệch sx/2
             diag = np.hypot(sx / 2.0, sy)
             if diag < floor - 1e-6:
                 return False
@@ -213,6 +202,7 @@ def _spacing_ok(spec, floor):
 
 
 def _edge_ok(spec, params):
+    """Kiểm tra lưới có nằm trong giới hạn mép bệ X/Y cho phép hay không."""
     coords = grid_coords(spec)
     mx = float(np.max(np.abs(coords[:, 0])))
     my = float(np.max(np.abs(coords[:, 1])))
@@ -221,26 +211,27 @@ def _edge_ok(spec, params):
 
 
 # ============================================================================
-# Sinh cac BUOC TINH CHINH ung vien tu luoi hien tai
+# Sinh các BƯỚC TINH CHỈNH ứng viên từ lưới hiện tại
 # ============================================================================
 def candidate_moves(spec, params, allow_removal):
-    """Tra ve list (spec_moi, mo_ta). Luon giu luoi deu/hoa mai doi xung."""
+    """Trả về list (spec_mới, mô_tả). Luôn giữ lưới đều/hoa mai đối xứng."""
     d = params['D_PILE']
     floor = params.get('_spacing_floor', 3.0 * d)
-    step = params.get('refine_step', 0.0) or max(0.25 * d, 0.10)  # nac co (m)
+    step = params.get('refine_step', 0.0) or max(0.25 * d, 0.10)  # nấc co (m)
     s_max = 6.0 * d
 
     out = []
     nx, ny, sx, sy = spec['nx'], spec['ny'], spec['sx'], spec['sy']
 
     def add(sp, label):
+        """Thêm phương án ứng viên nếu thỏa sàn khoảng cách và mép bệ."""
         if not _spacing_ok(sp, floor):
             return
         if not _edge_ok(sp, params):
             return
         out.append((sp, label))
 
-    # (a) co sx mot nac
+    # (a) co sx một nấc
     if nx > 1:
         lo = floor if spec['type'] == 'A' else max(
             floor, 2.0 * np.sqrt(max(floor ** 2 - sy ** 2, 0.0)))
@@ -249,7 +240,7 @@ def candidate_moves(spec, params, allow_removal):
             sp = dict(spec, sx=round(new_sx, 3))
             add(sp, "co sx %.2f->%.2f" % (sx, new_sx))
 
-    # (b) co sy mot nac
+    # (b) co sy một nấc
     if ny > 1:
         if spec['type'] == 'A':
             lo = floor
@@ -261,7 +252,7 @@ def candidate_moves(spec, params, allow_removal):
             add(sp, "co sy %.2f->%.2f" % (sy, new_sy))
 
     if allow_removal:
-        # (c) bo nguyen 1 COT: gian sx toi da de bu lai (uu tien kha thi)
+        # (c) bỏ nguyên 1 CỘT: giãn sx tối đa để bù lại (ưu tiên khả thi)
         if nx > 2:
             for sx2 in ((min(s_max, 2 * params.get('_max_x_allow', 1e9) / (nx - 2)),
                          sx)):
@@ -269,7 +260,7 @@ def candidate_moves(spec, params, allow_removal):
                 sp = dict(spec, nx=nx - 1, sx=sx2)
                 add(sp, "bo 1 cot -> %dx%d (sx=%.2f)" % (nx - 1, ny, sx2))
 
-        # (d) bo nguyen 1 HANG
+        # (d) bỏ nguyên 1 HÀNG
         if ny > 2:
             for sy2 in ((min(s_max, 2 * params.get('_max_y_allow', 1e9) / (ny - 2)),
                          sy)):
@@ -277,13 +268,13 @@ def candidate_moves(spec, params, allow_removal):
                 sp = dict(spec, ny=ny - 1, sy=sy2)
                 add(sp, "bo 1 hang -> %dx%d (sy=%.2f)" % (nx, ny - 1, sy2))
 
-        # (e) chuyen luoi A -> hoa mai B (tiet kiem floor(ny/2) coc)
+        # (e) chuyển lưới A -> hoa mai B (tiết kiệm floor(ny/2) cọc)
         if spec['type'] == 'A' and nx >= 2 and ny >= 2:
             sy_b = max(sy, np.sqrt(max(floor ** 2 - (sx / 2.0) ** 2, 0.0)))
             sp = dict(spec, type='B', sy=round(sy_b, 3))
             add(sp, "chuyen sang hoa mai %dx%d" % (nx, ny))
 
-    # Loai trung lap
+    # Loại trùng lặp
     uniq, seen = [], set()
     for sp, lb in out:
         key = (sp['type'], sp['nx'], sp['ny'], round(sp['sx'], 3), round(sp['sy'], 3))
@@ -294,9 +285,10 @@ def candidate_moves(spec, params, allow_removal):
 
 
 # ============================================================================
-# TOI UU PARETO TOAN CUC (predict - verify - recalibrate)
+# TỐI ƯU PARETO TOÀN CỤC (predict - verify - recalibrate)
 # ============================================================================
 def _n_piles(t, nx, ny):
+    """Số cọc của một lưới theo kiểu A (trực giao) hoặc B (hoa mai/so le)."""
     if t == 'A':
         return nx * ny
     return nx * ((ny + 1) // 2) + (nx - 1) * (ny // 2)
@@ -304,8 +296,8 @@ def _n_piles(t, nx, ny):
 
 def enumerate_configs(params, n_max, mode, grid0, nmax_axis=14):
     """
-    Liet ke TOAN BO ho luoi chuan kha thi ve hinh hoc:
-    (kieu A/B) x nx x ny, voi sx_max/sy_max theo mep be va 6d.
+    Liệt kê TOÀN BỘ họ lưới chuẩn khả thi về hình học:
+    (kiểu A/B) x nx x ny, với sx_max/sy_max theo mép bệ và 6d.
     """
     d = params['D_PILE']
     floor = params.get('_spacing_floor', 3.0 * d)
@@ -344,7 +336,7 @@ def enumerate_configs(params, n_max, mode, grid0, nmax_axis=14):
 
 
 def _scaled(spec_or_coords, k):
-    """Co deu mot cau hinh (spec luoi hoac toa do tuy bien) voi he so k."""
+    """Co đều một cấu hình (spec lưới hoặc tọa độ tùy biến) với hệ số k."""
     if isinstance(spec_or_coords, dict):
         sp = dict(spec_or_coords)
         sp['sx'] = round(sp['sx'] * k, 3)
@@ -357,9 +349,9 @@ def _scaled(spec_or_coords, k):
 
 def solve_min_scale(base, loads, Kc, params, target):
     """
-    Tim he so co k NHO NHAT sao cho du bao Kc*Pmax_be_cung(k) <= target
-    va khoang cach >= san. base: spec luoi hoac toa do tuy bien.
-    Tra ve (k, coords) hoac (None, None) neu ngay k=1 da vuot target.
+    Tìm hệ số co k NHỎ NHẤT sao cho dự báo Kc*Pmax_be_cung(k) <= target
+    và khoảng cách >= sàn. base: spec lưới hoặc tọa độ tùy biến.
+    Trả về (k, coords) hoặc (None, None) nếu ngay k=1 đã vượt target.
     """
     d = params['D_PILE']
     floor = params.get('_spacing_floor', 3.0 * d)
@@ -372,11 +364,11 @@ def solve_min_scale(base, loads, Kc, params, target):
         return None, None
     pm1, _ = rigid_pmax_pmin(c1, loads)
     if pm1 * Kc > target + 1e-9:
-        return None, None                     # khong kha thi ngay o k=1
+        return None, None                     # không khả thi ngay ở k=1
 
-    k_lo = min(1.0, floor / ms1)              # gioi han san khoang cach
+    k_lo = min(1.0, floor / ms1)              # giới hạn sàn khoảng cách
     lo, hi = k_lo, 1.0
-    for _ in range(24):                        # binary search
+    for _ in range(24):                        # tìm kiếm nhị phân (binary search)
         mid = 0.5 * (lo + hi)
         _, c = _scaled(base, mid)
         pm, _ = rigid_pmax_pmin(c, loads)
@@ -391,17 +383,17 @@ def solve_min_scale(base, loads, Kc, params, target):
 
 def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
     """
-    TOI UU PARETO + HOP DEN MCOC:
-      1. Goi MCOC tinh phuong an goc -> he so hieu chinh K.
-      2. Liet ke toan bo ho luoi chuan; voi moi cau hinh giai he so co nho
-         nhat theo DU BAO (be cung x K) -> tap ung vien tren mat Pareto
-         (so coc, do gon be).
-      3. Kiem chung ung vien tot nhat bang MCOC that:
-           - DAT  -> thanh phuong an duong nhiem, tiep tuc tim tot hon;
-           - KHONG DAT -> luu he so hieu chinh RIENG cua cau hinh do,
-             tinh lai du bao (ung vien tu dong bi day lui tren mat Pareto).
-      4. Lap den khi khong con ung vien nao TROI HON phuong an duong nhiem
-         hoac het ngan sach goi MCOC.
+    TỐI ƯU PARETO + HỘP ĐEN MCOC:
+      1. Gọi MCOC tính phương án gốc -> hệ số hiệu chỉnh K.
+      2. Liệt kê toàn bộ họ lưới chuẩn; với mỗi cấu hình giải hệ số co nhỏ
+         nhất theo DỰ BÁO (bệ cứng x K) -> tập ứng viên trên mặt Pareto
+         (số cọc, độ gọn bệ).
+      3. Kiểm chứng ứng viên tốt nhất bằng MCOC thật:
+           - ĐẠT  -> thành phương án đương nhiệm, tiếp tục tìm tốt hơn;
+           - KHÔNG ĐẠT -> lưu hệ số hiệu chỉnh RIÊNG của cấu hình đó,
+             tính lại dự báo (ứng viên tự động bị đẩy lùi trên mặt Pareto).
+      4. Lặp đến khi không còn ứng viên nào TRỘI HƠN phương án đương nhiệm
+         hoặc hết ngân sách gọi MCOC.
     """
     log = log or (lambda m: print(m))
     coords0 = np.asarray(params['original_coords'], dtype=float)
@@ -412,7 +404,7 @@ def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
     P_TENSION = params.get('P_TENSION', 0.0)
     target = params.get('target_ratio', 0.99) * P_LIMIT
 
-    # --- Noi long rang buoc theo hien trang goc -----------------------------
+    # --- Nới lỏng ràng buộc theo hiện trạng gốc -----------------------------
     d = params['D_PILE']
     SAFE_D = params.get('SAFE_D', d)
     s0 = min_spacing(coords0)
@@ -436,6 +428,7 @@ def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
     log("Luoi goc: " + (grid_label(grid0) if grid0 else "bo tri tuy bien doi xung"))
 
     def evaluate(coords, label):
+        """Gọi MCOC đánh giá 1 phương án, kiểm tra ràng buộc và ghi nhật ký."""
         n_calls[0] += 1
         res = evaluator(np.asarray(coords, dtype=float))
         ok, errs = check_constraints(coords, res, params)
@@ -450,7 +443,7 @@ def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
              "DAT" if ok else "KHONG DAT (" + "; ".join(errs) + ")"))
         return rec
 
-    # --- Buoc 0: MCOC phuong an goc ------------------------------------------
+    # --- Bước 0: MCOC phương án gốc ------------------------------------------
     log("Buoc 0: goi MCOC danh gia phuong an goc (%d coc)" % len(coords0))
     original = evaluate(coords0, "goc")
     pm_r0, _ = rigid_pmax_pmin(coords0, loads)
@@ -461,10 +454,10 @@ def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
     if incumbent is None:
         log("Phuong an goc KHONG DAT -> tim phuong an DAT trong ho luoi chuan...")
 
-    # Ho cau hinh ung vien:
-    #   - mode toan cuc: TOAN BO ho luoi chuan trong be (ke ca khi goc la
-    #     bo tri tuy bien) + phuong an co deu giu nguyen hinh dang goc
-    #   - mode 'spacing': chi co khoang cach cua chinh cau hinh goc
+    # Họ cấu hình ứng viên:
+    #   - mode toàn cục: TOÀN BỘ họ lưới chuẩn trong bệ (kể cả khi gốc là
+    #     bố trí tùy biến) + phương án co đều giữ nguyên hình dạng gốc
+    #   - mode 'spacing': chỉ co khoảng cách của chính cấu hình gốc
     bases = []
     if mode != 'spacing':
         cfgs = enumerate_configs(params, n_max=len(coords0), mode=mode, grid0=grid0)
@@ -475,19 +468,20 @@ def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
         bases += [(b, "%s %dx%d" % ("luoi" if b['type'] == 'A' else "hoa mai",
                                     b['nx'], b['ny'])) for b in cfgs]
     if grid0 is None:
-        bases.append((coords0, "co deu cum"))  # giu nguyen hinh dang goc
+        bases.append((coords0, "co deu cum"))  # giữ nguyên hình dạng gốc
     log("Ho phuong an ung vien: %d cau hinh" % len(bases))
 
-    cfg_K = {}        # he so hieu chinh RIENG tung cau hinh (sau khi MCOC chay)
-    tested = set()    # (key, k) da kiem chung
+    cfg_K = {}        # hệ số hiệu chỉnh RIÊNG từng cấu hình (sau khi MCOC chạy)
+    tested = set()    # (key, k) đã kiểm chứng
 
     def cfg_key(base):
+        """Khóa nhận dạng cấu hình (kiểu, nx, ny) hoặc ('custom',) nếu tùy biến."""
         if isinstance(base, dict):
             return (base['type'], base['nx'], base['ny'])
         return ('custom',)
 
     while n_calls[0] < budget:
-        # Mat Pareto du bao voi he so hieu chinh moi nhat
+        # Mặt Pareto dự báo với hệ số hiệu chỉnh mới nhất
         cands = []
         for base, name in bases:
             Kc = cfg_K.get(cfg_key(base), K_global)
@@ -503,8 +497,8 @@ def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
             cands.append({'base': base, 'name': name, 'k': k, 'coords': c,
                           'n': len(c), 'fp': footprint(c), 'pred': pm_pred})
 
-        # Chi giu ung vien TROI HON phuong an duong nhiem (it coc hon,
-        # hoac bang coc nhung gon hon)
+        # Chỉ giữ ứng viên TRỘI HƠN phương án đương nhiệm (ít cọc hơn,
+        # hoặc bằng cọc nhưng gọn hơn)
         if incumbent is not None:
             cands = [r for r in cands
                      if (r['n'], r['fp']) < (incumbent['n'],
@@ -513,7 +507,7 @@ def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
             log("Khong con ung vien nao troi hon -> DUNG.")
             break
 
-        # Loc mat Pareto (khong bi ung vien khac troi hon ve ca n va fp)
+        # Lọc mặt Pareto (không bị ứng viên khác trội hơn về cả n và fp)
         cands.sort(key=lambda r: (r['n'], r['fp'], r['pred']))
         front = []
         best_fp = float('inf')
@@ -525,13 +519,13 @@ def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
             % ", ".join("(%d coc, be %.1f m, ~%.0f T)" % (r['n'], r['fp'], r['pred'])
                         for r in front[:6]))
 
-        cand = front[0]    # uu tien it coc nhat
+        cand = front[0]    # ưu tiên ít cọc nhất
         label = "%s k=%.3f" % (cand['name'], cand['k'])
         log("Kiem chung MCOC: %s (du bao Pmax~%.1f T)" % (label, cand['pred']))
         rec = evaluate(cand['coords'], label)
         tested.add((cfg_key(cand['base']), round(cand['k'], 3)))
 
-        # Hieu chinh he so K rieng cua cau hinh nay theo ket qua that
+        # Hiệu chỉnh hệ số K riêng của cấu hình này theo kết quả thật
         pm_r = rigid_pmax_pmin(cand['coords'], loads)[0]
         if pm_r > 1e-9:
             cfg_K[cfg_key(cand['base'])] = rec['pmax'] / pm_r
@@ -542,7 +536,7 @@ def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
                 incumbent = rec
                 log("  -> Phuong an duong nhiem MOI: %d coc, be %.1f m, Pmax=%.1f T"
                     % (rec['n'], rec['footprint'], rec['pmax']))
-        # KHONG DAT: cfg_K da duoc cap nhat, vong sau du bao se tu day lui
+        # KHÔNG ĐẠT: cfg_K đã được cập nhật, vòng sau dự báo sẽ tự đẩy lùi
 
     best = incumbent
     if best is None:
@@ -566,19 +560,19 @@ def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
 
 
 # ============================================================================
-# Vong lap chinh
+# Vòng lặp chính
 # ============================================================================
 def run_refinement(params, loads, evaluator, log=None, max_iter=60,
                    mcoc_per_iter=4):
     """
-    Tinh chinh phuong an goc bang vong lap Hop Den tren LUOI DIEM.
+    Tinh chỉnh phương án gốc bằng vòng lặp Hộp Đen trên LƯỚI ĐIỂM.
 
-    params phai co: D_PILE, P_LIMIT, original_coords (+ SAFE_D, P_TENSION...)
+    params phải có: D_PILE, P_LIMIT, original_coords (+ SAFE_D, P_TENSION...)
     params['refine_mode']:
-        'full'    (mac dinh) - co khoang cach VA giam so coc (bo hang/cot,
-                               chuyen hoa mai)
-        'spacing'            - chi co khoang cach, giu nguyen so coc
-    evaluator(coords) -> dict {'pmax','pmin','mxmax','mymax'} (goi MCOC)
+        'full'    (mặc định) - co khoảng cách VÀ giảm số cọc (bỏ hàng/cột,
+                               chuyển hoa mai)
+        'spacing'            - chỉ co khoảng cách, giữ nguyên số cọc
+    evaluator(coords) -> dict {'pmax','pmin','mxmax','mymax'} (gọi MCOC)
     """
     log = log or (lambda m: print(m))
     coords0 = np.asarray(params['original_coords'], dtype=float)
@@ -588,7 +582,7 @@ def run_refinement(params, loads, evaluator, log=None, max_iter=60,
     log("Che do: %s" % ("co khoang cach + giam so coc" if allow_removal
                         else "chi co khoang cach (giu nguyen so coc)"))
 
-    # ---- Noi long rang buoc theo HIEN TRANG goc (khong khat hon goc) ------
+    # ---- Nới lỏng ràng buộc theo HIỆN TRẠNG gốc (không khắt hơn gốc) ------
     d = params['D_PILE']
     SAFE_D = params.get('SAFE_D', d)
     s0 = min_spacing(coords0)
@@ -612,7 +606,7 @@ def run_refinement(params, loads, evaluator, log=None, max_iter=60,
             log("CHU Y: coc goc cach mep be Y < SAFE_D -> giu muc hien trang.")
         params['_max_y_allow'] = max(lim, my0)
 
-    # ---- Nhan dien luoi goc -------------------------------------------------
+    # ---- Nhận diện lưới gốc -------------------------------------------------
     grid = detect_grid(coords0)
     if grid is None:
         log("CHU Y: phuong an goc la bo tri doi xung TUY BIEN (khong phai "
@@ -622,6 +616,7 @@ def run_refinement(params, loads, evaluator, log=None, max_iter=60,
         log("Luoi goc: " + grid_label(grid))
 
     def evaluate(coords, label):
+        """Gọi MCOC đánh giá 1 phương án, kiểm tra ràng buộc và ghi nhật ký."""
         n_calls[0] += 1
         res = evaluator(np.asarray(coords, dtype=float))
         ok, errs = check_constraints(coords, res, params)
@@ -638,7 +633,7 @@ def run_refinement(params, loads, evaluator, log=None, max_iter=60,
              "DAT" if ok else "KHONG DAT (" + "; ".join(errs) + ")"))
         return rec
 
-    # ---- Buoc 0: MCOC danh gia phuong an goc -------------------------------
+    # ---- Bước 0: MCOC đánh giá phương án gốc -------------------------------
     log("Buoc 0: goi MCOC danh gia phuong an goc (%d coc)" % len(coords0))
     original = evaluate(coords0, "goc")
     best = original
@@ -661,18 +656,18 @@ def run_refinement(params, loads, evaluator, log=None, max_iter=60,
     while it < max_iter:
         it += 1
 
-        # He so hieu chinh K cap nhat tu lan goi MCOC gan nhat
+        # Hệ số hiệu chỉnh K cập nhật từ lần gọi MCOC gần nhất
         pm_rigid, _ = rigid_pmax_pmin(cur['coords'], loads)
         K = cur['pmax'] / pm_rigid if pm_rigid > 1e-9 else 1.0
 
-        # Sinh va du bao cac buoc ung vien
+        # Sinh và dự báo các bước ứng viên
         cands = []
         if cur_grid is not None:
             moves = [(sp, lb, grid_coords(sp))
                      for sp, lb in candidate_moves(cur_grid, params, allow_removal)]
         else:
-            # Bo tri tuy bien: CO DEU toan cum mot nac nho quanh trong tam,
-            # giu nguyen hinh dang; khong bo coc.
+            # Bố trí tùy biến: CO ĐỀU toàn cụm một nấc nhỏ quanh trọng tâm,
+            # giữ nguyên hình dạng; không bỏ cọc.
             moves = []
             s_min = min_spacing(cur['coords'])
             if s_min > floor + 1e-4 and s_min < float('inf'):
@@ -699,12 +694,12 @@ def run_refinement(params, loads, evaluator, log=None, max_iter=60,
             log("Vong %d: khong con buoc tinh chinh kha thi -> DUNG." % it)
             break
 
-        # Uu tien: it coc nhat -> be gon nhat -> du bao thap nhat
+        # Ưu tiên: ít cọc nhất -> bệ gọn nhất -> dự báo thấp nhất
         cands.sort(key=lambda r: (r['n'], r['fp'], r['pred']))
 
         improved = False
         for cand in cands[:mcoc_per_iter]:
-            # Buoc phai thuc su tot hon hien tai
+            # Bước phải thực sự tốt hơn hiện tại
             if (cand['n'], cand['fp']) >= (cur['n'], cur['footprint'] - 1e-6):
                 continue
             log("Vong %d: %s (du bao Pmax~%.1f T)" % (it, cand['label'], cand['pred']))

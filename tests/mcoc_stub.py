@@ -14,14 +14,19 @@ import re
 import sys
 
 _NUM = re.compile(r'^-?\d+\.?\d*(?:[eE][+-]?\d+)?$')
-FEM_FACTOR = 1.07   # gia lap chenh lech FEM so voi be cung
+FEM_FACTOR = 1.07   # giả lập chênh lệch FEM so với bệ cứng
 
 
+# ============================================================================
+# Đọc dữ liệu vào
+# ============================================================================
 def parse_input(path):
+    """Đọc file input MCOC, trả về (danh sách tổ hợp tải, danh sách tọa độ cọc).
+    Hỗ trợ cả định dạng tọa độ trên 1 dòng lẫn định dạng tách mỗi thông số 1 dòng."""
     with open(path, 'r', encoding='utf-8', errors='replace') as f:
         lines = f.read().splitlines()
     loads, coords = [], []
-    singles = []        # cac dong 1 so (khoi du lieu coc dang moi-thong-so-1-dong)
+    singles = []        # các dòng 1 số (khối dữ liệu cọc dạng mỗi-thông-số-1-dòng)
     for ln in lines[3:]:
         parts = ln.split()
         if not parts or not all(_NUM.match(p) for p in parts):
@@ -29,14 +34,14 @@ def parse_input(path):
         if len(parts) == 6:
             loads.append([float(p) for p in parts])
         elif len(parts) in (2, 5):
-            # Dong toa do coc: 'X Y' hoac 'X Y a b c'
+            # Dòng tọa độ cọc: 'X Y' hoặc 'X Y a b c'
             coords.append((float(parts[0]), float(parts[1])))
         elif len(parts) == 1:
             singles.append(float(parts[0]))
 
     if not coords and singles:
-        # Dang split: moi thong so 1 dong, khoi 16 gia tri/coc,
-        # X = gia tri thu 13, Y = gia tri thu 14 cua khoi (offset 12, 13)
+        # Dạng split: mỗi thông số 1 dòng, khối 16 giá trị/cọc,
+        # X = giá trị thứ 13, Y = giá trị thứ 14 của khối (offset 12, 13)
         try:
             nc = int(float(lines[1].split()[0]))
         except (ValueError, IndexError):
@@ -49,10 +54,15 @@ def parse_input(path):
     return loads, coords
 
 
+# ============================================================================
+# Điểm vào: giả lập MCOC_Batch.exe
+# ============================================================================
 def main():
+    """Mô phỏng MCOC_Batch: nhận file input (qua tham số dòng lệnh hoặc stdin),
+    tính nội lực cọc theo bệ cứng nhân FEM_FACTOR, rồi ghi file <tên>_result.txt."""
     sys.stdout.write("CHUONG TRINH TINH KHONG GIAN MONG COC (STUB)\n")
-    # Giong MCOC_Batch.exe: nhan duong dan file qua THAM SO dong lenh
-    # (bo qua cac flag --out-dir, --quiet...); fallback: hoi qua stdin.
+    # Giống MCOC_Batch.exe: nhận đường dẫn file qua THAM SỐ dòng lệnh
+    # (bỏ qua các flag --out-dir, --quiet...); fallback: hỏi qua stdin.
     args = [a for a in sys.argv[1:] if not a.startswith('-')]
     flags = sys.argv[1:]
     out_dir = None
@@ -89,13 +99,14 @@ def main():
     pos_min = (1, 1)
     for li, (hx, hy, N, mx, my, mz) in enumerate(loads, 1):
         for pi, (x, y) in enumerate(coords, 1):
+            # Lực dọc đầu cọc theo công thức bệ cứng (N/n + uốn quanh 2 trục) nhân hệ số FEM
             p = (N / n + mx * (y - cy) / Ix + my * (x - cx) / Iy) * FEM_FACTOR
             if p > pmax:
                 pmax, pos_max = p, (pi, li)
             if p < pmin:
                 pmin, pos_min = p, (pi, li)
 
-    # Momen dau coc gia lap (giam khi nhieu coc)
+    # Momen đầu cọc giả lập (giảm khi nhiều cọc)
     mxm = 45.0 / n
     mym = 167.0 / n
 

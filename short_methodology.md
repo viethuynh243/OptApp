@@ -1,34 +1,57 @@
 # Tóm tắt Phương pháp Tối ưu hóa Móng Cọc
 
-Dưới đây là tóm tắt ngắn gọn 4 bước cốt lõi trong thuật toán của chương trình:
+> Tóm tắt ngắn gọn thuật toán **hiện hành** của chương trình.
+> Phương pháp chính: **NSGA-II (di truyền đa mục tiêu) + đánh giá MCOC chính xác**.
+> (Bản tóm tắt cũ mô tả "Grid Search + bệ cứng" làm phương pháp chính nay **không còn đúng** —
+> bệ cứng chỉ còn dùng để ước lượng nhanh / xem trước, không dùng để duyệt thiết kế.)
 
 ## 1. Mục tiêu
-Tìm cấu hình cọc có **số lượng ít nhất** nhưng vẫn đảm bảo tuyệt đối các tiêu chuẩn chịu lực và thi công trên một kích thước bệ cho trước.
 
-## 2. Sinh lưới (Grid Generation)
-Sử dụng phương pháp quét cạn (Grid Search) có chọn lọc:
-- **Kiểu lưới:** Quét 2 mô hình lưới là Trực giao (Kiểu A) và So le (Kiểu B).
-- **Giới hạn không gian:** Khống chế khoảng cách tối đa giữa các cọc (sx, sy) để đảm bảo tim cọc ngoài cùng luôn cách mép bệ một khoảng an toàn (>= d).
+Tìm cấu hình cọc có **số lượng ít nhất** nhưng vẫn thỏa **tuyệt đối** các tiêu chuẩn chịu lực và thi công, trên một kích thước bệ cho trước. Vì bài toán có nhiều tiêu chí mâu thuẫn nên lời giải là **mặt Pareto** các phương án đánh đổi, từ đó kiến nghị một phương án.
 
-## 3. Lõi Giả lập Cơ học (Mock Black-box)
-Thay vì dùng mô hình phần tử hữu hạn chậm chạp, chương trình sử dụng phương pháp **Bệ Cứng + Hiệu chỉnh (Rigid Cap + Calibration)** để dự báo nội lực tốc độ cao:
-1. **Tính bệ cứng:** Tính nội lực cọc (P, M) bằng công thức cơ học của móng tuyệt đối cứng (tốc độ < 1 mili-giây):
-   ```text
-   P_i = (N / n)  +  (Mx * y_i / Ix)  +  (My * x_i / Iy)
-   ```
-2. **Trích xuất sai số:** Tính Hệ số hiệu chỉnh (K) dựa trên kết quả của Phương án Gốc (nhằm khớp với bệ đàn hồi thực tế): 
-   ```text
-   K = P_thực_tế_midas / P_bệ_cứng
-   ```
-3. **Nội suy (Calibration):** Lấy nội lực bệ cứng của các lưới cọc mới sinh ra nhân với K. Phương pháp này giúp triệt tiêu sai số hệ thống, đưa kết quả dự báo bám sát độ uốn thực tế của móng đàn hồi (sai số xấp xỉ 0%).
-   ```text
-   P_dự_báo = P_mới_bệ_cứng * K
-   ```
+## 2. Mô hình hóa (biến – mục tiêu – ràng buộc)
 
-## 4. Xử lý Ràng buộc & Đề xuất
-Từng cấu hình sau khi qua bộ giả lập sẽ bị loại ngay lập tức (`KHÔNG ĐẠT`) nếu vi phạm 1 trong các điều kiện sau:
-- **R1, R2:** Lực nén / Nhổ vượt quá Giới hạn cho phép.
-- **R3, R4:** Khoảng cách cọc vi phạm tiêu chuẩn thi công (3d đến 6d).
-- **R5, R6:** Momen đầu cọc vượt Sức uốn cho phép.
+- **Biến quyết định (genome):** `(type, nx, ny, sx, sy)` — kiểu lưới A (trực giao) / B (hoa mai), số cột/hàng (rời rạc), bước lưới `sx, sy ∈ [3d, 6d]` (liên tục). Đây là bài toán **hỗn hợp rời rạc–liên tục**. Tọa độ cọc sinh ra **luôn đối xứng quanh tâm bệ**.
+- **Hai mục tiêu (đều cực tiểu):**
+  - `f₁ = số cọc` (tiết kiệm vật liệu, thi công);
+  - `f₂ = mục tiêu phụ` — **"bệ gọn"** (footprint nhỏ nhất, *mặc định*) hoặc **"an toàn"** (Pmax nhỏ nhất). Chọn trên giao diện.
+- **Ràng buộc:** R3 `3d ≤ s ≤ 6d` (Kiểu B xét **đường chéo**); R4 cọc nằm trong bệ (`max|x|+SAFE_D ≤ Lx/2`); R5 `Pmax ≤ [Po]`; R5b `Pmin ≥ −[Ct]` (khi `Ct>0`); R6 `Mx,My ≤ [M]` (tùy chọn). R7 (lực ngang) / R8 (tương tác P–M) **đang tắt** theo đề bài R1–R6.
 
-**Đề xuất tối ưu:** Trong số các cấu hình `ĐẠT`, chọn phương án có số cọc ít nhất. Nếu không có phương án nào tiết kiệm hơn phương án thiết kế ban đầu, chương trình sẽ kiến nghị giữ nguyên **Phương án Gốc**.
+## 3. Thuật toán chính: NSGA-II (`core/nsga2_optimizer.py`)
+
+Giải thuật di truyền đa mục tiêu (Deb et al., 2002), gồm 4 thành phần lõi:
+
+1. **Fast non-dominated sorting** — xếp hạng quần thể thành các front Pareto.
+2. **Crowding distance** — giữ đa dạng nghiệm dọc mặt Pareto.
+3. **Crowded tournament selection** — chọn lọc (rank thấp hơn → thưa hơn).
+4. **SBX crossover + đột biến đa thức + elitism (μ+λ)** — sinh con, gộp cha+con, giữ tinh hoa.
+
+**Xử lý ràng buộc — "constrained-domination" (Deb):** mọi vi phạm được gộp thành chỉ số `CV` đã chuẩn hóa; khả thi luôn trội hơn bất khả thi, hai bất khả thi thì CV nhỏ hơn trội hơn, hai khả thi thì so Pareto trên `(f₁, f₂)`.
+
+**Tiết kiệm lần gọi MCOC:** mỗi genome chỉ gọi MCOC **một lần** nhờ **cache theo lưới** (`spec_key`); tham số **`max_evals`** đặt trần số lần chạy MCOC để kiểm soát thời gian (GUI dùng `pop_size=16, n_gen=10, max_evals=50`).
+
+## 4. Đánh giá nội lực — MCOC chính xác (mặc định)
+
+Mỗi phương án được chấm bằng **hộp đen MCOC** (`MCOCBlackbox.make_real_evaluator` → `mcoc_writer` sinh file input → `mcoc_runner` chạy `MCOC_Batch.exe` → đọc `*_result.txt`). Đây là kết quả **exact** (kể cả nền đàn hồi, lực ngang).
+
+- **Bắt buộc** cấu hình MCOC Batch + file input gốc; thiếu thì chương trình **từ chối chạy** (không có đường xấp xỉ trong quyết định).
+- **Tải trọng lấy từ giao diện là nguồn duy nhất:** khối tổ hợp tải trong file gốc bị **ghi đè** bằng tải nhập trên UI.
+
+**Chính xác bắt buộc nhưng vẫn nhanh:** MCOC là oracle duy nhất; tốc độ đến từ việc *giảm số lần gọi MCOC* (cache theo lưới + `max_evals` + dẫn hướng bằng predictor rẻ) và *song song hóa* các lần gọi còn lại — **không** thay MCOC bằng xấp xỉ. 1 lần gọi ≈ 0.1–1 s; NSGA-II mặc định ≤ 50 lần gọi (~50 s tuần tự, ~7 s nếu song song 8 lõi). Chi tiết: `docs/BAO_CAO_THUAT_TOAN.md §2.6`.
+
+**Ước lượng nhanh (không phải đường quyết định):** mô hình **bệ cứng + hệ số hiệu chỉnh K** (`core/rigid_cap.py`) cho Pmax tức thì (`P_i = N/n + (Mx−N·cy)(y_i−cy)/Ix + (My−N·cx)(x_i−cx)/Iy`, với `K = Pmax_MCOC/Pmax_bệ_cứng`). Dùng cho mock NSGA-II khi không có MCOC, tô màu heatmap, và **dự báo** trong engine tinh chỉnh tất định.
+
+## 5. Đề xuất phương án
+
+Trong số phương án **ĐẠT** trên mặt Pareto: ưu tiên (1) **ít cọc nhất** → (2) **mục tiêu phụ** (bệ gọn / Pmax nhỏ) → (3) nếu ngang nhau thì **giữ phương án gốc**. Chương trình so sánh **Kiểu A vs Kiểu B** và kiến nghị phương án tối ưu kèm lý do, bảng tọa độ, báo cáo kỹ thuật và biểu đồ tổ hợp bất lợi nhất.
+
+## 6. Ba engine trong code (dùng tùy mục đích)
+
+| Engine | Thuật toán | Đánh giá nội lực | Vai trò |
+|---|---|---|---|
+| `nsga2_optimizer.py` | **NSGA-II (di truyền, đa mục tiêu)** | **MCOC exact** (hoặc mock) | **Chính** — nút "Chạy tối ưu hóa" |
+| `refine_optimizer.py` | Pareto tất định (dự báo→kiểm chứng→hiệu chỉnh) | MCOC exact + dự báo bệ cứng | Tinh chỉnh từ phương án gốc, ít lần gọi MCOC |
+| `optimizer.py` | Grid Search (quét lưới) | Bệ cứng (xấp xỉ) | **Chỉ demo** (`run_demo.py`) — không dùng quyết định |
+
+> Chạy thử: `python run_nsga2_demo.py` (NSGA-II mock), `python run_demo.py` (bệ cứng).
+> Chi tiết đầy đủ: `methodology.md`; báo cáo thuật toán theo "VI. YÊU CẦU": `docs/BAO_CAO_THUAT_TOAN.md`.

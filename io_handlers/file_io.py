@@ -1,24 +1,55 @@
+"""
+file_io.py - Đọc file đầu vào và xuất file kết quả cho bài toán tối ưu móng cọc.
+
+Module này phụ trách 2 nhiệm vụ I/O chính:
+    - ĐỌC: tự nhận diện và đọc file đầu vào ở 2 định dạng:
+        * CSV cũ (các cột phân tách bằng dấu phẩy);
+        * TXT chuẩn MCOC (CHƯƠNG TRÌNH TÍNH KHÔNG GIAN MÓNG CỌC), bao gồm
+          cả file kết quả *_result.txt dùng ngược lại làm dữ liệu đầu vào.
+    - XUẤT: ghi file kết quả theo định dạng giống chuẩn MCOC, kèm bảng so
+      sánh các kiểu bố trí và bảng nội lực cọc.
+
+Quy ước đơn vị: tải trọng nhập theo N của file (thường kN / kN.m); sức chịu
+tải [Po], [Ct] và lực cọc quy về Tấn (T). Các nhãn khóa trong dict (Hx, Hy,
+N, Mx, My, Mz, L_X, L_Y, D_PILE, P_LIMIT...) là khóa thống nhất dùng xuyên
+suốt ứng dụng nên KHÔNG được đổi.
+
+Lưu ý: mọi chuỗi định dạng/từ khóa nhận diện file (header, token, encoding
+'utf-8', dấu phân tách) là cố định vì chúng điều khiển việc phân tích file.
+"""
+
 import csv
 import os
 import numpy as np
 
+from core import rigid_cap
+
+
+# ============================================================================
+# ĐỌC FILE ĐẦU VÀO (tự nhận diện CSV / MCOC TXT)
+# ============================================================================
 def parse_input_file(filepath):
     """
     Tự động nhận diện và đọc file (CSV cũ hoặc TXT chuẩn MCOC).
+
+    Tra ve: (params, loads, project_name).
+    Luong: doc toan bo dong -> neu la file ket qua MCOC thi chuyen huong;
+    neu dong dau co dau phay thi doc kieu CSV, nguoc lai doc chuan MCOC TXT.
     """
     params = {}
     loads = []
     project_name = "Du An Toi Uu Coc"
-    
+
     with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
         lines = f.readlines()
-        
+
     if not lines:
         raise ValueError("File rỗng")
-        
+
+    # File ket qua MCOC -> dung bo doc rieng (xem PHAN TICH FILE KET QUA MCOC)
     if "CHUONG TRINH TINH KHONG GIAN MONG COC" in "".join(lines[:10]):
         return parse_mcoc_result_as_input(filepath)
-        
+
     # Nhận diện: nếu dòng đầu có dấu phẩy thì là CSV, nếu không thì khả năng là MCOC
     if ',' in lines[0] or (len(lines)>1 and ',' in lines[1]):
         # Đọc theo kiểu CSV
@@ -26,7 +57,7 @@ def parse_input_file(filepath):
         param_vals = [float(v.strip()) for v in lines[1].split(',')]
         for k, v in zip(param_keys, param_vals):
             params[k] = v
-            
+
         # Dòng 1: L_X, L_Y, D_PILE, SAFE_D, P_LIMIT, P_TENSION
         # Dòng 2: values...
         # Dòng 3: Hx, Hy, P, Mx, My, Mz
@@ -34,18 +65,18 @@ def parse_input_file(filepath):
             if not lines[i].strip(): continue
             parts = lines[i].split(',')
             if len(parts) >= 6:
-                loads.append({'Hx': float(parts[0].strip()), 'Hy': float(parts[1].strip()), 
-                              'N': float(parts[2].strip()), 'Mx': float(parts[3].strip()), 
+                loads.append({'Hx': float(parts[0].strip()), 'Hy': float(parts[1].strip()),
+                              'N': float(parts[2].strip()), 'Mx': float(parts[3].strip()),
                               'My': float(parts[4].strip()), 'Mz': float(parts[5].strip())})
             elif len(parts) >= 3:
                 # Fallback to old format
-                loads.append({'Hx': 0.0, 'Hy': 0.0, 'N': float(parts[0].strip()), 
+                loads.append({'Hx': 0.0, 'Hy': 0.0, 'N': float(parts[0].strip()),
                               'Mx': float(parts[1].strip()), 'My': float(parts[2].strip()), 'Mz': 0.0})
     else:
         # Đọc theo chuẩn MCOC TXT
         # Dòng 1: Tên
         project_name = lines[0].strip()
-        
+
         # Dòng 2: Nc Np ... Ax By H
         parts_l2 = lines[1].split()
         if len(parts_l2) >= 11:
@@ -54,7 +85,7 @@ def parse_input_file(filepath):
             params['L_X'] = Ax
             params['L_Y'] = By
             params['H_cap'] = float(parts_l2[10])
-            
+
         # Tổ hợp tải trọng bắt đầu từ dòng 4 (index 3)
         i = 3
         while i < len(lines):
@@ -77,17 +108,18 @@ def parse_input_file(filepath):
             elif len(parts) == 1 and '.' in parts[0]:
                 break
             i += 1
-            
+
+        # Doc cac khoi dac trung coc + toa do dau coc tu phan con lai cua file
         original_coords = []
         d_pile = None
         p_limit = None
-        
+
         while i < len(lines):
             line = lines[i].strip()
             if not line:
                 i += 1
                 continue
-            
+
             try:
                 # Dòng i+2: Ev.uon Er.uon Ev.nen Er.nen m.day m.be m
                 props = lines[i+2].split()
@@ -96,7 +128,7 @@ def parse_input_file(filepath):
                     m_soil = float(props[6])
                 else:
                     Eb = 3e6; m_soil = 400.0
-                    
+
                 a = float(lines[i+4].strip())
                 # Dòng i+5: a b cday Fo Jo (Cũ, không đúng)
                 # Thực tế mỗi thông số 1 dòng:
@@ -112,9 +144,9 @@ def parse_input_file(filepath):
                     Ct = float(lines[i+11].strip())
                 except:
                     Fo = 1.0; Jo = 0.1; Co = 33333.3; Ct = 16666.7
-                    
+
                 Po = float(lines[i+9].strip())
-                
+
                 # Check for X, Y coords (usually after 12 lines)
                 # find the first line with two floats
                 idx_coord = i + 12
@@ -131,7 +163,8 @@ def parse_input_file(filepath):
                 else:
                     X = float(lines[i+12].strip())
                     Y = float(lines[i+13].strip())
-                    
+
+                # Chi luu thong so coc 1 lan (khoi coc dau tien)
                 if d_pile is None:
                     d_pile = a
                     p_limit = Po
@@ -141,159 +174,32 @@ def parse_input_file(filepath):
                     params['J_o'] = Jo
                     params['C_o'] = Co
                     params['C_t'] = Ct
-                    
+
                 original_coords.append([X, Y])
                 # Skip to next pile block
                 i = idx_coord + 4
             except (IndexError, ValueError) as e:
                 print("Parse error at line", i, e)
                 break
-                
+
         if d_pile is not None:
             params['D_PILE'] = d_pile
         if p_limit is not None:
             params['P_LIMIT'] = p_limit
         if original_coords:
             params['original_coords'] = original_coords
-            
+
     return params, loads, project_name
 
-def export_output_file(filepath, results, params, loads, project_name, output_option="BEST"):
-    """
-    Xuất kết quả giống chuẩn MCOC có thêm Bảng So sánh Kiểu bố trí.
-    """
-    with open(filepath, 'w', encoding='utf-8') as f:
-        f.write("     TONG CONG TY TVTK GTVT\n\n")
-        f.write("              CHUONG TRINH TINH KHONG GIAN MONG COC - OPTIMIZER\n\n\n")
-        f.write(f"            Ten cong trinh : {project_name}\n\n\n")
-        
-        if not results or not results.get('recommended'):
-            f.write("      ❌ KHONG TIM THAY PHUONG AN BO TRI NAO THOA MAN CAC RANG BUOC!\n")
-            return
-            
-        config = results['recommended']
-        
-        f.write("                        SO LIEU BAN DAU HE MONG COC\n\n")
-        f.write(f"       Nc =  {config['n']:<4}    Np =  {len(loads)}\n\n")
-        f.write("            Kich thuoc be (m)\n\n")
-        f.write(f"       Ax = {params.get('L_X', 0):<10.1f} By = {params.get('L_Y', 0):<10.1f}\n\n\n")
-        
-        if results.get('original_config'):
-            orig = results['original_config']
-            status_str = "DAT" if orig['ok'] else "KHONG DAT"
-            f.write(f"                        PHUONG AN GOC TRONG FILE ({status_str})\n\n")
-            f.write(f"       So luong coc: {orig['n']} coc\n")
-            f.write(f"       P_max = {orig['pmax']:.1f} T (Gioi han: {params.get('P_LIMIT', 1000.0):.1f} T)\n")
-            if not orig['ok']:
-                f.write(f"       Ly do khong dat: {orig['msg']}\n")
-            f.write("\n\n")
-            
-        if output_option == "ALL":
-            f.write(f"                        TAT CA PHUONG AN DAT YEU CAU ({len(results['all_valid_configs'])})\n\n")
-            for i, cfg in enumerate(results['all_valid_configs']):
-                type_str = "Truc giao" if cfg['type'] == "A" else "So le"
-                f.write(f"       {i+1:<3}. Phuong an {i+1} ({type_str}): {cfg['nx']}x{cfg['ny']}, n={cfg['n']}, Pmax={cfg['pmax']:.1f} T\n")
-            f.write("\n\n")
-        
-        f.write("                        BANG SO SANH CAC KIEU BO TRI\n\n")
-        
-        if results.get('best_A'):
-            A = results['best_A']
-            f.write(f"       Kieu A (Truc giao): {A['n']} coc, P_max = {A['pmax']:.1f} T\n")
-        else:
-            f.write("       Kieu A (Truc giao): Khong thoa man\n")
-            
-        if results.get('best_B'):
-            B = results['best_B']
-            f.write(f"       Kieu B (So le)  : {B['n']} coc, P_max = {B['pmax']:.1f} T\n")
-        else:
-            f.write("       Kieu B (So le)  : Khong thoa man\n")
-            
-        f.write("\n")
-        f.write(f"       PHUONG AN KIEN NGHI: Kieu {config['type']}\n")
-        f.write(f"       Ly do: {results['reason']}\n\n\n")
 
-        f.write("                        CAC TO HOP TAI TRONG\n\n")
-        f.write("     T.T      Hx        Hy        P         Mx        My        Mz\n\n")
-        for i, load in enumerate(loads):
-            f.write(f"       {i+1:<6} {load.get('Hx',0):<9.1f} {load.get('Hy',0):<9.1f} {load['N']:<9.1f} {load['Mx']:<9.1f} {load['My']:<9.1f} {load.get('Mz',0):<9.1f}\n")
-            
-        f.write("\n\n")
-        f.write(f"                        TOA DO DAU COC (PHUONG AN TOI UU: Kieu {config['type']})\n\n")
-        f.write(f"       Luoi: {config['nx']} x {config['ny']}, sx = {config['sx']:.3f} m, sy = {config['sy']:.3f} m\n\n")
-        f.write("          T.T     X         Y\n\n")
-        for i, coord in enumerate(config['coords']):
-            f.write(f"            {i+1:<5} {coord[0]:<9.3f} {coord[1]:<9.3f}\n")
-            
-        f.write("\n\n")
-        f.write("                             NOI LUC COC KIEM TRA\n\n")
-        f.write("     Coc t.h       N\n\n")
-        
-        cg_x, cg_y = np.mean([x for x,y in config['coords']]), np.mean([y for x,y in config['coords']])
-        I_x = sum((y - cg_y)**2 for x,y in config['coords'])
-        I_y = sum((x - cg_x)**2 for x,y in config['coords'])
-        I_x = I_x if I_x > 0 else 1e-9
-        I_y = I_y if I_y > 0 else 1e-9
-        n_piles = config['n']
-        
-        all_forces = {}
-        global_pmax = -float('inf')
-        global_pmin = float('inf')
-        max_p_pile = -1
-        max_p_load = -1
-        min_p_pile = -1
-        min_p_load = -1
-        
-        for p_idx, (x, y) in enumerate(config['coords']):
-            all_forces[p_idx] = []
-            dx = x - cg_x
-            dy = y - cg_y
-            
-            for l_idx, load in enumerate(loads):
-                N = load['N']
-                Mx_cg = load['Mx'] - N * cg_y
-                My_cg = load['My'] - N * cg_x
-                p = N/n_piles + Mx_cg*dy/I_x + My_cg*dx/I_y
-                all_forces[p_idx].append(p)
-                
-                if p > global_pmax:
-                    global_pmax = p
-                    max_p_pile = p_idx + 1
-                    max_p_load = l_idx + 1
-                if p < global_pmin:
-                    global_pmin = p
-                    min_p_pile = p_idx + 1
-                    min_p_load = l_idx + 1
-                    
-        # Lực bệ cứng cho ra đơn vị thô (theo N của tải, thường kN). config['pmax']
-        # đã được hiệu chỉnh về cùng đơn vị với [Po] (T). Quy về cùng đơn vị bằng
-        # hệ số calib để bảng nội lực khớp với phần kết luận phía trên.
-        cfg_pmax = config.get('pmax', 0) or 0
-        calib = (cfg_pmax / global_pmax) if (global_pmax > 0 and cfg_pmax > 0) else 1.0
-
-        for p_idx in range(n_piles):
-            first_th = True
-            for l_idx in range(len(loads)):
-                val = all_forces[p_idx][l_idx] * calib
-                if first_th:
-                    f.write(f"       {p_idx+1:<3} {l_idx+1:<6} {val:.2f}\n")
-                    first_th = False
-                else:
-                    f.write(f"           {l_idx+1:<6} {val:.2f}\n")
-            f.write("\n")
-
-        f.write("\n")
-        f.write("                                     BANG TONG KET NOI LUC\n\n")
-        f.write("                 Coc   t.h     N (T)\n\n")
-        f.write(f"         Nmin      {min_p_pile:<5} {min_p_load:<7} {global_pmin*calib:.2f}\n")
-        f.write(f"         Nmax      {max_p_pile:<5} {max_p_load:<7} {global_pmax*calib:.2f}\n\n")
-
-
-import re
-
+# ============================================================================
+# PHÂN TÍCH FILE KẾT QUẢ MCOC (dùng ngược làm đầu vào)
+# ============================================================================
 def parse_mcoc_result_file(filepath):
     """
     Đọc Nmax, Nmin, Mxmax, Mymax từ bảng BANG TONG KET NOI LUC trong file _result.txt.
+
+    Tra ve dict {'pmax','pmin','mxmax','mymax'} hoac None neu khong tim thay Nmax.
     """
     pmax = None
     pmin = None
@@ -303,6 +209,7 @@ def parse_mcoc_result_file(filepath):
     with open(filepath, 'r', encoding='utf-8', errors='replace') as r:
         lines = r.readlines()
 
+    # Chi quet trong vung bang tong ket noi luc
     in_summary = False
     for line in lines:
         if 'BANG TONG KET NOI LUC' in line:
@@ -355,6 +262,11 @@ def parse_mcoc_result_file(filepath):
 def parse_mcoc_result_as_input(filepath):
     """
     Đọc toàn bộ dữ liệu từ file _result.txt để làm Input cho bài toán tối ưu.
+
+    Tra ve: (params, loads, 'Imported from Result').
+    Luong: quet tuan tu file theo trang thai (kich thuoc be -> to hop tai
+    trong -> dac trung coc -> toa do dau coc), sau do bo sung Nmax/Nmin/
+    Mxmax/Mymax thuc te tu bang tong ket noi luc.
     """
     params = {}
     loads = []
@@ -363,6 +275,7 @@ def parse_mcoc_result_as_input(filepath):
     with open(filepath, 'r', encoding='utf-8', errors='replace') as r:
         lines = r.readlines()
 
+    # Co trang thai danh dau dang doc khoi nao + da bo qua dong header chua
     in_loads = False
     in_pile_props = False
     in_pile_coords = False
@@ -480,3 +393,125 @@ def parse_mcoc_result_as_input(filepath):
 
 
     return params, loads, 'Imported from Result'
+
+
+# ============================================================================
+# XUẤT KẾT QUẢ (định dạng giống chuẩn MCOC)
+# ============================================================================
+def export_output_file(filepath, results, params, loads, project_name, output_option="BEST"):
+    """
+    Xuất kết quả giống chuẩn MCOC có thêm Bảng So sánh Kiểu bố trí.
+
+    Luong: ghi tieu de + so lieu ban dau -> phuong an goc -> (tuy chon) tat
+    ca phuong an dat -> bang so sanh kieu A/B -> to hop tai trong -> toa do
+    dau coc -> bang noi luc coc va bang tong ket noi luc.
+    """
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write("     TONG CONG TY TVTK GTVT\n\n")
+        f.write("              CHUONG TRINH TINH KHONG GIAN MONG COC - OPTIMIZER\n\n\n")
+        f.write(f"            Ten cong trinh : {project_name}\n\n\n")
+
+        # Khong co phuong an kien nghi -> ghi thong bao roi dung
+        if not results or not results.get('recommended'):
+            f.write("      ❌ KHONG TIM THAY PHUONG AN BO TRI NAO THOA MAN CAC RANG BUOC!\n")
+            return
+
+        config = results['recommended']
+
+        f.write("                        SO LIEU BAN DAU HE MONG COC\n\n")
+        f.write(f"       Nc =  {config['n']:<4}    Np =  {len(loads)}\n\n")
+        f.write("            Kich thuoc be (m)\n\n")
+        f.write(f"       Ax = {params.get('L_X', 0):<10.1f} By = {params.get('L_Y', 0):<10.1f}\n\n\n")
+
+        # Phuong an goc trong file (neu co) kem trang thai DAT/KHONG DAT
+        if results.get('original_config'):
+            orig = results['original_config']
+            status_str = "DAT" if orig['ok'] else "KHONG DAT"
+            f.write(f"                        PHUONG AN GOC TRONG FILE ({status_str})\n\n")
+            f.write(f"       So luong coc: {orig['n']} coc\n")
+            f.write(f"       P_max = {orig['pmax']:.1f} T (Gioi han: {params.get('P_LIMIT', 1000.0):.1f} T)\n")
+            if not orig['ok']:
+                f.write(f"       Ly do khong dat: {orig['msg']}\n")
+            f.write("\n\n")
+
+        # Tuy chon ALL: liet ke toan bo phuong an dat yeu cau
+        if output_option == "ALL":
+            f.write(f"                        TAT CA PHUONG AN DAT YEU CAU ({len(results['all_valid_configs'])})\n\n")
+            for i, cfg in enumerate(results['all_valid_configs']):
+                type_str = "Truc giao" if cfg['type'] == "A" else "So le"
+                f.write(f"       {i+1:<3}. Phuong an {i+1} ({type_str}): {cfg['nx']}x{cfg['ny']}, n={cfg['n']}, Pmax={cfg['pmax']:.1f} T\n")
+            f.write("\n\n")
+
+        f.write("                        BANG SO SANH CAC KIEU BO TRI\n\n")
+
+        # Kieu A (truc giao)
+        if results.get('best_A'):
+            A = results['best_A']
+            f.write(f"       Kieu A (Truc giao): {A['n']} coc, P_max = {A['pmax']:.1f} T\n")
+        else:
+            f.write("       Kieu A (Truc giao): Khong thoa man\n")
+
+        # Kieu B (so le / hoa mai)
+        if results.get('best_B'):
+            B = results['best_B']
+            f.write(f"       Kieu B (So le)  : {B['n']} coc, P_max = {B['pmax']:.1f} T\n")
+        else:
+            f.write("       Kieu B (So le)  : Khong thoa man\n")
+
+        f.write("\n")
+        f.write(f"       PHUONG AN KIEN NGHI: Kieu {config['type']}\n")
+        f.write(f"       Ly do: {results['reason']}\n\n\n")
+
+        # Bang cac to hop tai trong
+        f.write("                        CAC TO HOP TAI TRONG\n\n")
+        f.write("     T.T      Hx        Hy        P         Mx        My        Mz\n\n")
+        for i, load in enumerate(loads):
+            f.write(f"       {i+1:<6} {load.get('Hx',0):<9.1f} {load.get('Hy',0):<9.1f} {load['N']:<9.1f} {load['Mx']:<9.1f} {load['My']:<9.1f} {load.get('Mz',0):<9.1f}\n")
+
+        # Toa do dau coc cua phuong an toi uu
+        f.write("\n\n")
+        f.write(f"                        TOA DO DAU COC (PHUONG AN TOI UU: Kieu {config['type']})\n\n")
+        f.write(f"       Luoi: {config['nx']} x {config['ny']}, sx = {config['sx']:.3f} m, sy = {config['sy']:.3f} m\n\n")
+        f.write("          T.T     X         Y\n\n")
+        for i, coord in enumerate(config['coords']):
+            f.write(f"            {i+1:<5} {coord[0]:<9.3f} {coord[1]:<9.3f}\n")
+
+        f.write("\n\n")
+        f.write("                             NOI LUC COC KIEM TRA\n\n")
+        f.write("     Coc t.h       N\n\n")
+
+        # Luc tung coc theo be cung (cong thuc dung chung trong core.rigid_cap).
+        # P co shape (len(loads), n_piles): hang = to hop tai, cot = coc.
+        n_piles = config['n']
+        P = rigid_cap.forces_all_loads(config['coords'], loads)
+
+        # Vi tri (coc, to hop) cua Pmax/Pmin tho
+        max_l, max_p = np.unravel_index(np.argmax(P), P.shape)
+        min_l, min_p = np.unravel_index(np.argmin(P), P.shape)
+        global_pmax = float(P[max_l, max_p]); max_p_pile = int(max_p) + 1; max_p_load = int(max_l) + 1
+        global_pmin = float(P[min_l, min_p]); min_p_pile = int(min_p) + 1; min_p_load = int(min_l) + 1
+
+        # Lực bệ cứng cho ra đơn vị thô (theo N của tải, thường kN). config['pmax']
+        # đã được hiệu chỉnh về cùng đơn vị với [Po] (T). Quy về cùng đơn vị bằng
+        # hệ số calib để bảng nội lực khớp với phần kết luận phía trên.
+        cfg_pmax = config.get('pmax', 0) or 0
+        calib = (cfg_pmax / global_pmax) if (global_pmax > 0 and cfg_pmax > 0) else 1.0
+
+        # In luc tung coc theo tung to hop (dong dau moi coc kem so hieu coc)
+        for p_idx in range(n_piles):
+            first_th = True
+            for l_idx in range(len(loads)):
+                val = float(P[l_idx, p_idx]) * calib
+                if first_th:
+                    f.write(f"       {p_idx+1:<3} {l_idx+1:<6} {val:.2f}\n")
+                    first_th = False
+                else:
+                    f.write(f"           {l_idx+1:<6} {val:.2f}\n")
+            f.write("\n")
+
+        # Bang tong ket: vi tri va gia tri Nmin/Nmax (da quy ve don vi T)
+        f.write("\n")
+        f.write("                                     BANG TONG KET NOI LUC\n\n")
+        f.write("                 Coc   t.h     N (T)\n\n")
+        f.write(f"         Nmin      {min_p_pile:<5} {min_p_load:<7} {global_pmin*calib:.2f}\n")
+        f.write(f"         Nmax      {max_p_pile:<5} {max_p_load:<7} {global_pmax*calib:.2f}\n\n")

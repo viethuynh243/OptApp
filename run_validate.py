@@ -25,6 +25,7 @@ import sys
 import os
 import io
 
+# Ép mã hóa console về UTF-8 và bảo đảm import được từ thư mục gốc dự án
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -37,28 +38,35 @@ OUT_DIR    = os.path.dirname(os.path.abspath(__file__))
 LINE = "=" * 92
 
 
+# ============================================================================
+# Thu thập dữ liệu & tính thống kê sai số
+# ============================================================================
 def collect_cases(sample_dir):
-    """Doc tat ca file *_result.txt, tinh MCOC (ground truth) va Hop den (be cung)."""
+    """Đọc tất cả file *_result.txt, tính MCOC (ground truth) và Hộp đen (bệ cứng)."""
     rows = []
     files = sorted(f for f in os.listdir(sample_dir) if f.endswith("_result.txt"))
     for fn in files:
         path = os.path.join(sample_dir, fn)
+        # Đọc hồ sơ kết quả MCOC; bỏ qua file lỗi không phân tích được
         try:
             params, loads, _ = parse_mcoc_result_as_input(path)
         except Exception as e:
             print(f"  [!] Bo qua {fn}: {e}")
             continue
 
+        # Lấy tọa độ cọc và kết quả MCOC (ground truth) từ hồ sơ
         coords = params.get("original_coords")
         mcoc_pmax = params.get("orig_pmax")
         mcoc_pmin = params.get("orig_pmin", 0.0)
         if not coords or mcoc_pmax is None or not loads:
             continue
 
+        # Tính lại Pmax/Pmin bằng phương pháp Hộp đen (bệ cứng) trên cùng dữ liệu
         arr = np.array(coords, dtype=float)
         bb_pmax = MCOCBlackbox._rigid_cap_pmax(arr, loads)
         bb_pmin = MCOCBlackbox._rigid_cap_pmin(arr, loads)
 
+        # Sai số tương đối Pmax giữa Hộp đen và MCOC (%)
         err_pmax = (bb_pmax - mcoc_pmax) / mcoc_pmax * 100.0 if mcoc_pmax else 0.0
 
         rows.append({
@@ -74,6 +82,7 @@ def collect_cases(sample_dir):
 
 
 def stats(rows):
+    """Tính các chỉ số thống kê sai số Pmax (bias, sai số tuyệt đối, RMSE, hệ số tương quan...)."""
     e = np.array([r["err_pmax"] for r in rows])
     mcoc = np.array([r["mcoc_pmax"] for r in rows])
     bb   = np.array([r["bb_pmax"] for r in rows])
@@ -93,7 +102,11 @@ def stats(rows):
     }
 
 
+# ============================================================================
+# Xuất kết quả: bảng văn bản, Excel và biểu đồ
+# ============================================================================
 def build_text(rows, st):
+    """Dựng bảng so sánh dạng văn bản (bảng chi tiết + phần thống kê + kết luận)."""
     out = []
     out.append(LINE)
     out.append("  KIEM CHUNG: PHUONG PHAP GOC (MCOC / FEM) vs PHUONG PHAP HOP DEN (BE CUNG)")
@@ -128,6 +141,7 @@ def build_text(rows, st):
 
 
 def export_xlsx(rows, st, out_path):
+    """Xuất bảng so sánh ra file Excel có định dạng (cần openpyxl); trả về đường dẫn hoặc None."""
     try:
         import openpyxl
         from openpyxl.styles import Font, Alignment, PatternFill
@@ -192,6 +206,7 @@ def export_xlsx(rows, st, out_path):
 
 
 def export_png(rows, st, out_path):
+    """Vẽ biểu đồ tương quan và phân bố sai số ra file PNG (cần matplotlib); trả về đường dẫn hoặc None."""
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -237,19 +252,23 @@ def export_png(rows, st, out_path):
 
 
 if __name__ == "__main__":
+    # Thu thập hồ sơ và tính sai số; dừng nếu không có dữ liệu mẫu
     rows = collect_cases(SAMPLE_DIR)
     if not rows:
         print("  [X] Khong tim thay ho so MCOC nao trong input_sample/.")
         sys.exit(1)
 
+    # Tính thống kê sai số, dựng bảng văn bản và in ra màn hình
     st = stats(rows)
     text = build_text(rows, st)
     print(text)
 
+    # Đường dẫn các file kết quả sẽ xuất ra
     txt_path  = os.path.join(OUT_DIR, "validate_mcoc_vs_blackbox.txt")
     xlsx_path = os.path.join(OUT_DIR, "validate_mcoc_vs_blackbox.xlsx")
     png_path  = os.path.join(OUT_DIR, "validate_mcoc_vs_blackbox.png")
 
+    # Ghi bảng TXT, rồi xuất thêm Excel và biểu đồ PNG nếu có thư viện
     with open(txt_path, "w", encoding="utf-8") as f:
         f.write(text + "\n")
     saved_xlsx = export_xlsx(rows, st, xlsx_path)

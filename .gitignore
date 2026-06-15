@@ -9,3 +9,8 @@ __pycache__/
 Mcoc_test/
 .DS_Store
 
+# Build artifacts đóng gói (PyInstaller / Inno Setup) — không commit, tự sinh lại
+packaging/build/
+packaging/dist/
+packaging/*.exe
+

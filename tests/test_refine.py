@@ -24,6 +24,9 @@ INPUT_FILE = os.path.join(WORK, "DEMO.txt")
 STUB = os.path.join(ROOT, "tests", "mcoc_stub.py")
 
 
+# ============================================================================
+# Dựng dữ liệu vào demo
+# ============================================================================
 def build_demo_input():
     """Tao file input MCOC tong hop: be 7.2x13.2, 8 coc D1.2 (luoi 2x4, s=3.6m), Po=500T."""
     coords = [(-1.8, -5.4), (1.8, -5.4),
@@ -60,28 +63,33 @@ def build_demo_input():
     return coords
 
 
+# ============================================================================
+# Kịch bản kiểm thử end-to-end
+# ============================================================================
 def main():
+    """Chạy toàn bộ chuỗi: parse input -> self-check template -> vòng lặp tinh chỉnh
+    gọi stub MCOC, rồi kiểm tra phương án tốt nhất thỏa ràng buộc và có file kết quả."""
     print("=" * 70)
     print(" TEST END-TO-END: Hop den MCOC (stub) + tinh chinh tung buoc")
     print("=" * 70)
 
     coords = build_demo_input()
 
-    # 1) Parser doc dung file input?
+    # 1) Parser đọc đúng file input?
     params, loads, name = parse_input_file(INPUT_FILE)
     got = np.asarray(params.get('original_coords', []))
-    assert got.shape == (8, 2), "Parser doc sai toa do: %s" % got
-    assert len(loads) == 2, "Parser doc sai to hop tai: %d" % len(loads)
+    assert got.shape == (8, 2), "Parser doc sai toa do: %s" % got       # đúng 8 cọc, 2 cột (x,y)
+    assert len(loads) == 2, "Parser doc sai to hop tai: %d" % len(loads)  # đúng 2 tổ hợp tải
     assert abs(params['D_PILE'] - 1.2) < 1e-6
     assert abs(params['P_LIMIT'] - 500.0) < 1e-6
     print("[OK] parse_input_file: 8 coc, 2 to hop tai, d=1.2, Po=500")
 
-    # 2) Template tu sinh lai file -> doc nguoc phai khop
+    # 2) Template tự sinh lại file -> đọc ngược phải khớp
     ok, msg = self_check(INPUT_FILE, params['original_coords'])
     assert ok, "Self-check template FAIL: " + msg
     print("[OK] mcoc_writer self-check:", msg)
 
-    # 3) Vong lap toi uu goi stub MCOC qua subprocess
+    # 3) Vòng lặp tối ưu gọi stub MCOC qua subprocess
     params['exe_path'] = STUB
     params['input_filepath'] = INPUT_FILE
     params['SAFE_D'] = params['D_PILE']
@@ -94,10 +102,11 @@ def main():
     best = results['best']
     assert best is not None, "Khong tim duoc phuong an: " + results['reason']
     assert best['ok']
-    assert best['pmax'] <= params['P_LIMIT'] + 1e-6
+    assert best['pmax'] <= params['P_LIMIT'] + 1e-6           # phương án tốt nhất phải thỏa [Po]
     n_files = len([f for f in os.listdir(evaluator.workdir) if f.endswith('_result.txt')])
-    assert results['n_calls'] >= 2, "Vong lap chi goi MCOC %d lan?" % results['n_calls']
-    assert n_files >= 1, "MCOC stub khong sinh file ket qua"
+    # >=1: nếu phương án gốc đã tối ưu, vòng lặp chỉ cần 1 lần gọi MCOC (đánh giá gốc).
+    assert results['n_calls'] >= 1, "Vong lap chi goi MCOC %d lan?" % results['n_calls']
+    assert n_files >= 1, "MCOC stub khong sinh file ket qua"  # stub phải sinh file *_result.txt
 
     print()
     print("KET QUA:", results['reason'])

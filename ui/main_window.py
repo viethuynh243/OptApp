@@ -1,19 +1,42 @@
+"""
+main_window.py - Cửa sổ chính của ứng dụng (Controller trong mô hình MVC).
+
+Đây là lớp giao diện Tkinter / tkinterdnd2 (View + Controller). Nó KHÔNG chứa
+logic tính toán: mọi thuật toán nằm ở core/ (rigid_cap, refine_optimizer,
+nsga2_optimizer, mechanics, generator, blackbox) và mọi xuất/nhập file nằm ở
+io_handlers/ (file_io, mcoc_writer, report_writer, export_utils). File này chỉ
+lo dựng giao diện, thu thập dữ liệu người dùng và điều phối các lời gọi đó.
+
+Quản lý 2 tab:
+    - Tab 1 (Interactive): nhập thông số/tải trọng, chạy tối ưu, vẽ mô phỏng,
+      xuất kết quả; hỗ trợ chế độ "MCOC thực - tinh chỉnh từng bước".
+    - Tab 2 (Batch): chạy hàng loạt nhiều file, xuất PDF/Excel/PNG.
+"""
+
+import os
+import threading
+import subprocess
+import re as _re
+import unicodedata
+
+import numpy as np
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from tkinterdnd2 import DND_FILES
-from core.optimizer import run_optimization
+
+from core import rigid_cap
 from core.refine_optimizer import run_refinement, run_pareto_refinement
 from core.blackbox import MCOCBlackbox
 from core.mechanics import check_layout
-import threading
-import os  # noqa: E402
 from core.generator import generate_coords
 from io_handlers.file_io import parse_input_file, export_output_file
+from io_handlers.report_writer import export_technical_report
 from ui.plot_canvas import PlotCanvas
-import unicodedata
-import re as _re
 
 
+# ============================================================================
+# TIỆN ÍCH CẤP MODULE
+# ============================================================================
 def to_safe_filename(text: str) -> str:
     """
     Chuyển chuỗi tiếng Việt (có dấu) sang tên file an toàn (ASCII, không dấu).
@@ -33,78 +56,96 @@ def to_safe_filename(text: str) -> str:
     safe = _re.sub(r'_+', '_', safe).strip('_')
     return safe
 
+
+# ============================================================================
+# CỬA SỔ CHÍNH (Controller)
+# ============================================================================
 class MainWindow:
+    """Cửa sổ chính: dựng UI 2 tab và điều phối tới core/ + io_handlers/."""
+
+    # ========================================================================
+    # KHỞI TẠO & DỰNG GIAO DIỆN
+    # ========================================================================
     def __init__(self, root):
+        """Khởi tạo cửa sổ: tạo biến trạng thái, dựng UI, đăng ký kéo-thả file."""
         self.root = root
-        self.root.title("Tối Ưu Hóa Bố Trí Cọc Móng Cầu (Modular)")
+        self.root.title("Tối Ưu Hóa Bố Trí Cọc Móng Cầu")
         self.root.geometry("1100x750")
-        
-        # Biến hệ thống
+
+        # Biến hệ thống — thông số bài toán để TRỐNG khi mở (người dùng tự nhập
+        # hoặc nạp từ file). Dùng StringVar để cho phép ô trống.
+        self.NUMERIC_PARAMS = ('L_X', 'L_Y', 'D_PILE', 'P_LIMIT', 'P_TENSION', 'M_LIMIT')
         self.params = {
-            'L_X': tk.DoubleVar(value=6.0),
-            'L_Y': tk.DoubleVar(value=9.6),
-            'D_PILE': tk.DoubleVar(value=1.2),
-            'P_LIMIT': tk.DoubleVar(value=500.0),
-            'P_TENSION': tk.DoubleVar(value=0.0),
-            'M_LIMIT': tk.DoubleVar(value=0.0), # 0 = không kiểm tra (T.m)
+            'L_X': tk.StringVar(value=''),
+            'L_Y': tk.StringVar(value=''),
+            'D_PILE': tk.StringVar(value=''),
+            'P_LIMIT': tk.StringVar(value=''),
+            'P_TENSION': tk.StringVar(value=''),
+            'M_LIMIT': tk.StringVar(value=''),  # trống/0 = không kiểm tra (T.m)
             'exe_path': tk.StringVar(value=''),
             'mock_mode': tk.BooleanVar(value=True)
         }
-        # Che do Hop den MCOC thuc (tinh chinh tung buoc)
+        # Chế độ Hộp đen MCOC thực (tinh chỉnh từng bước)
         self.var_use_real = tk.BooleanVar(value=False)
-        self.input_filepath = ''   # file input MCOC goc (template sinh phuong an moi)
+        self.input_filepath = ''   # file input MCOC gốc (template sinh phương án mới)
         # Cờ xuất file (chỉ dùng trong save_file)
         self.var_export_cti = tk.BooleanVar(value=False)
-        
+
         self.loads = []
         self.current_config = None
-        
+
         self.setup_ui()
         self.add_default_loads()
-        
-        # Drag and drop support
+
+        # Hỗ trợ kéo-thả file vào cửa sổ
         self.root.drop_target_register(DND_FILES)
         self.root.dnd_bind('<<Drop>>', self.handle_drop)
-        
+
     def setup_ui(self):
+        """Tạo Notebook 2 tab (Tương tác / Hàng loạt) và dựng giao diện từng tab."""
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
+
         self.tab_interactive = tk.Frame(self.notebook)
         self.notebook.add(self.tab_interactive, text="1. Tương tác (Interactive)")
         self.setup_interactive_ui(self.tab_interactive)
-        
+
         self.tab_batch = tk.Frame(self.notebook)
         self.notebook.add(self.tab_batch, text="2. Hàng loạt (Batch Mode)")
         self.setup_batch_ui(self.tab_batch)
-        
+
+    # ========================================================================
+    # TAB 1 - TƯƠNG TÁC: DỰNG GIAO DIỆN
+    # ========================================================================
     def setup_interactive_ui(self, parent_frame):
+        """Dựng toàn bộ giao diện Tab 1: panel trái (nhập liệu/điều khiển) và
+        panel phải (mô phỏng mặt bằng cọc)."""
         main_paned = ttk.PanedWindow(parent_frame, orient=tk.HORIZONTAL)
         main_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
+
         # Left Panel
         left_frame = tk.Frame(main_paned, width=400)
         main_paned.add(left_frame, weight=0)
-        
+
         # Tab: Thông số
         tab_params = tk.Frame(left_frame, padx=10, pady=10)
         tab_params.pack(fill=tk.BOTH, expand=True)
-        
+
         # Buttons IO
         frame_io = tk.Frame(tab_params)
         frame_io.pack(fill=tk.X, pady=5)
-        ttk.Button(frame_io, text="Kéo thả File hoặc Chọn Input (1 File)", command=self.load_file).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
-        ttk.Button(frame_io, text="Xóa Tải trọng", command=self.clear_loads).pack(side=tk.LEFT, fill=tk.X, expand=False, padx=2)
-        ttk.Button(frame_io, text="Xuất Kết Quả", command=self.save_file).pack(side=tk.RIGHT, fill=tk.X, expand=False, padx=2)
-        
+        ttk.Button(frame_io, text="Mở file đầu vào  (hoặc kéo-thả)", command=self.load_file).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
+        ttk.Button(frame_io, text="Làm mới", command=self.clear_loads).pack(side=tk.LEFT, fill=tk.X, expand=False, padx=2)
+        ttk.Button(frame_io, text="Xuất kết quả", command=self.save_file).pack(side=tk.RIGHT, fill=tk.X, expand=False, padx=2)
+
         # Geometrics
         frame_geom = tk.LabelFrame(tab_params, text="Thông số Bài toán", padx=10, pady=5)
         frame_geom.pack(fill=tk.X, pady=5)
-        
+
         labels_1 = {"L_X": "Rộng bệ Lx (m)", "L_Y": "Dài bệ Ly (m)",
                     "D_PILE": "Đ.kính cọc d (m)", "P_LIMIT": "Sức nén [Po] (T)",
                     "P_TENSION": "Sức nhổ [Ct] (T)", "M_LIMIT": "Sức uốn [M] (T.m)"}
-        self._param_entries = {}      
+        self._param_entries = {}
         row = 0
         col = 0
         for k, text in labels_1.items():
@@ -116,54 +157,69 @@ class MainWindow:
             if row > 2:
                 row = 0
                 col += 1
-        
+
+        # Ghi chú đơn vị — tránh nhầm giữa tải trọng (kN) và sức chịu tải (Tấn)
+        ttk.Label(frame_geom,
+                  text="Đơn vị (theo MCOC): lực = Tấn (T); momen = T.m. Áp dụng cho cả tải trọng và [Po]/[Ct]/[M].",
+                  foreground="#888").grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
+
         # Loads
         frame_loads = tk.LabelFrame(tab_params, text="Tổ hợp Tải trọng", padx=10, pady=5)
         frame_loads.pack(fill=tk.BOTH, expand=True, pady=5)
-        
+
         cols = ("TH", "Hx", "Hy", "P", "Mx", "My", "Mz")
         self.tree_loads = ttk.Treeview(frame_loads, columns=cols, show="headings", height=5)
         col_cfg = {
-            "TH":  ("#",       35),
-            "Hx":  ("Hx(kN)",  60),
-            "Hy":  ("Hy(kN)",  60),
-            "P":   ("P(kN)",   65),
-            "Mx":  ("Mx(kNm)", 70),
-            "My":  ("My(kNm)", 70),
-            "Mz":  ("Mz(kNm)", 70),
+            "TH":  ("#",      35),
+            "Hx":  ("Hx(T)",  60),
+            "Hy":  ("Hy(T)",  60),
+            "P":   ("P(T)",   65),
+            "Mx":  ("Mx(T.m)", 70),
+            "My":  ("My(T.m)", 70),
+            "Mz":  ("Mz(T.m)", 70),
         }
         for c, (hdr, w) in col_cfg.items():
             self.tree_loads.heading(c, text=hdr)
             self.tree_loads.column(c, width=w, anchor="e")
         self.tree_loads.column("TH", anchor="center")
-        
+
         # Scrollbar
         sb_loads = ttk.Scrollbar(frame_loads, orient="vertical", command=self.tree_loads.yview)
         self.tree_loads.configure(yscrollcommand=sb_loads.set)
         self.tree_loads.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sb_loads.pack(side=tk.RIGHT, fill=tk.Y)
-        
+
         # Double-click để sửa
         self.tree_loads.bind("<Double-1>", lambda e: self.edit_load())
-        
+
         # Nút CRUD tải trọng
         frame_load_btns = tk.Frame(tab_params)
         frame_load_btns.pack(fill=tk.X, pady=(0, 3))
-        ttk.Button(frame_load_btns, text="+ Thêm tổ hợp",  command=self.add_load_dialog).pack(side=tk.LEFT, padx=2)
-        ttk.Button(frame_load_btns, text="✎ Sửa chọn",    command=self.edit_load).pack(side=tk.LEFT, padx=2)
-        ttk.Button(frame_load_btns, text="✕ Xóa chọn",    command=self.delete_load).pack(side=tk.LEFT, padx=2)
-        ttk.Button(frame_load_btns, text="Nhập từ CSV",    command=self.paste_loads_csv).pack(side=tk.RIGHT, padx=2)
-        
+        ttk.Button(frame_load_btns, text="Thêm tổ hợp",   command=self.add_load_dialog).pack(side=tk.LEFT, padx=2)
+        ttk.Button(frame_load_btns, text="Sửa dòng chọn", command=self.edit_load).pack(side=tk.LEFT, padx=2)
+        ttk.Button(frame_load_btns, text="Xóa dòng chọn", command=self.delete_load).pack(side=tk.LEFT, padx=2)
+        ttk.Button(frame_load_btns, text="Dán nhiều dòng (CSV)", command=self.paste_loads_csv).pack(side=tk.RIGHT, padx=2)
+
         # --- ĐIỀU KHIỂN & KẾT QUẢ TỐI ƯU ---
         frame_run = tk.LabelFrame(tab_params, text="Điều Khiển Tối Ưu", padx=10, pady=5)
         frame_run.pack(fill=tk.X, pady=5)
-        
-        self.output_option = tk.StringVar(value="BEST")
-        ttk.Radiobutton(frame_run, text="Chỉ xuất tối ưu", variable=self.output_option, value="BEST").pack(side=tk.LEFT)
-        ttk.Radiobutton(frame_run, text="Xuất tất cả", variable=self.output_option, value="ALL").pack(side=tk.LEFT, padx=10)
 
-        # --- HOP DEN MCOC (goi chuong trinh thuc + tinh chinh tung buoc) ---
-        frame_mcoc = tk.LabelFrame(tab_params, text="Hộp đen MCOC (gọi chương trình thực)", padx=10, pady=5)
+        self.output_option = tk.StringVar(value="BEST")
+        row_out = tk.Frame(frame_run); row_out.pack(fill=tk.X)
+        ttk.Radiobutton(row_out, text="Chỉ phương án tối ưu", variable=self.output_option, value="BEST").pack(side=tk.LEFT)
+        ttk.Radiobutton(row_out, text="Hiện tất cả phương án", variable=self.output_option, value="ALL").pack(side=tk.LEFT, padx=10)
+
+        # Mục tiêu phụ (sau khi đủ số cọc + đạt Pmax<=Po)
+        self.var_secondary = tk.StringVar(value="compact")
+        row_sec = tk.Frame(frame_run); row_sec.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(row_sec, text="Ưu tiên:").pack(side=tk.LEFT)
+        ttk.Radiobutton(row_sec, text="Tiết kiệm (bệ gọn)", variable=self.var_secondary,
+                        value="compact").pack(side=tk.LEFT, padx=4)
+        ttk.Radiobutton(row_sec, text="An toàn (giảm Pmax)", variable=self.var_secondary,
+                        value="pmax").pack(side=tk.LEFT, padx=10)
+
+        # --- Cấu hình MCOC (bắt buộc — mọi phương án được chấm bằng MCOC chính xác) ---
+        frame_mcoc = tk.LabelFrame(tab_params, text="Cấu hình MCOC (bắt buộc)", padx=10, pady=5)
         frame_mcoc.pack(fill=tk.X, pady=5)
 
         row_exe = tk.Frame(frame_mcoc)
@@ -173,57 +229,54 @@ class MainWindow:
         self.txt_exe_path.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
         ttk.Button(row_exe, text="...", width=3, command=self.browse_exe).pack(side=tk.LEFT)
 
-        self.chk_use_real = ttk.Checkbutton(
-            frame_mcoc,
-            text="Gọi MCOC thực — tinh chỉnh từng bước (cần file input MCOC gốc)",
-            variable=self.var_use_real)
-        self.chk_use_real.pack(anchor="w", pady=2)
-
-        # Che do toi uu
-        self.var_refine_mode = tk.StringVar(value="full")
-        row_mode = tk.Frame(frame_mcoc)
-        row_mode.pack(fill=tk.X, pady=2)
-        ttk.Radiobutton(row_mode, text="Khoảng cách + giảm số cọc",
-                        variable=self.var_refine_mode, value="full").pack(side=tk.LEFT)
-        ttk.Radiobutton(row_mode, text="Chỉ khoảng cách (giữ số cọc)",
-                        variable=self.var_refine_mode, value="spacing").pack(side=tk.LEFT, padx=10)
         self.lbl_template = ttk.Label(frame_mcoc, text="File input gốc: (chưa có)", foreground="gray")
-        self.lbl_template.pack(anchor="w")
+        self.lbl_template.pack(anchor="w", pady=(2, 0))
+        ttk.Label(frame_mcoc,
+                  text="Mọi phương án đều được chấm bằng MCOC (chính xác) — cần MCOC Batch + file input MCOC gốc.",
+                  foreground="#888").pack(anchor="w")
+        # Giữ biến để tương thích (không dùng trong chế độ NSGA-II + MCOC)
+        self.var_refine_mode = tk.StringVar(value="full")
 
         tk.Button(tab_params, text="▶ CHẠY TỐI ƯU HÓA", font=("Arial", 14, "bold"), bg="#27ae60", fg="white", command=self.run_optimize).pack(fill=tk.X, pady=15, ipady=8)
-        
+
         frame_res = tk.LabelFrame(tab_params, text="Kết quả Đánh giá", padx=10, pady=5)
         frame_res.pack(fill=tk.BOTH, expand=True, pady=5)
-        
+
         self.txt_result = tk.Text(frame_res, height=10, width=40, font=("Consolas", 10))
         self.txt_result.pack(fill=tk.BOTH, expand=True)
-        
+
         # Right Panel
         right_frame = tk.Frame(main_paned, bg="white")
         main_paned.add(right_frame, weight=1)
-        
+
         # Thêm Combobox để chọn Tổ hợp tải trọng mô phỏng
         frame_sim = tk.Frame(right_frame, bg="white")
         frame_sim.pack(side=tk.TOP, fill=tk.X, pady=5)
-        
+
         tk.Label(frame_sim, text="Phương án:", bg="white").pack(side=tk.LEFT, padx=5)
         self.cb_config = ttk.Combobox(frame_sim, state="readonly", width=25)
         self.cb_config.pack(side=tk.LEFT, padx=5)
         self.cb_config.bind("<<ComboboxSelected>>", self.update_simulation)
-        
+
         tk.Label(frame_sim, text="Tổ hợp:", bg="white").pack(side=tk.LEFT, padx=5)
         self.cb_load_case = ttk.Combobox(frame_sim, state="readonly", width=15)
         self.cb_load_case.pack(side=tk.LEFT, padx=5)
         self.cb_load_case.bind("<<ComboboxSelected>>", self.update_simulation)
-        
+
         self.plot_canvas = PlotCanvas(right_frame)
         self.plot_canvas.widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        
+
+    # ========================================================================
+    # TAB 1 - TƯƠNG TÁC: NHẬP / SỬA TẢI TRỌNG
+    # ========================================================================
     def add_default_loads(self):
-        self.loads = [{'Hx': 0.0, 'Hy': 0.0, 'N': 2577.0, 'Mx': 1500.0, 'My': 1500.0, 'Mz': 0.0}]
+        """Khởi đầu bằng danh sách tải trọng TRỐNG (người dùng tự thêm/nhập)."""
+        # Khởi đầu bằng TẢI TRỌNG TRỐNG (sạch) — người dùng tự thêm/nhập.
+        self.loads = []
         self.refresh_loads_ui()
-        
+
     def refresh_loads_ui(self):
+        """Vẽ lại bảng tải trọng (Treeview) từ danh sách self.loads hiện hành."""
         for item in self.tree_loads.get_children():
             self.tree_loads.delete(item)
         for i, load in enumerate(self.loads):
@@ -246,12 +299,12 @@ class MainWindow:
         dlg.transient(self.root)
 
         fields = [
-            ("Hx (kN) — lực ngang X",  "Hx",  0.0),
-            ("Hy (kN) — lực ngang Y",  "Hy",  0.0),
-            ("P  (kN) — lực đứng",     "N",   0.0),
-            ("Mx (kNm) — momen trục X","Mx",  0.0),
-            ("My (kNm) — momen trục Y","My",  0.0),
-            ("Mz (kNm) — momen xoắn",  "Mz",  0.0),
+            ("Hx (T) — lực ngang X",    "Hx",  0.0),
+            ("Hy (T) — lực ngang Y",    "Hy",  0.0),
+            ("P  (T) — lực đứng",       "N",   0.0),
+            ("Mx (T.m) — momen trục X", "Mx",  0.0),
+            ("My (T.m) — momen trục Y", "My",  0.0),
+            ("Mz (T.m) — momen xoắn",   "Mz",  0.0),
         ]
         vars_ = {}
         for row_i, (label, key, default) in enumerate(fields):
@@ -391,9 +444,33 @@ class MainWindow:
         ttk.Button(btn_f, text="Hủy", command=dlg.destroy).pack(side=tk.LEFT, padx=4)
 
         dlg.wait_window()
-            
+
+    # ========================================================================
+    # ĐỌC THAM SỐ & NHẬP / XUẤT FILE
+    # ========================================================================
+    def _pget(self, key, default=0.0):
+        """Đọc 1 thông số số từ UI; ô trống / sai định dạng -> default."""
+        raw = self.params[key].get()
+        raw = raw.strip() if isinstance(raw, str) else raw
+        if raw == '' or raw is None:
+            return default
+        try:
+            return float(raw)
+        except (ValueError, TypeError):
+            return default
+
     def get_params_dict(self):
-        d = {k: v.get() for k, v in self.params.items()}
+        """Gom toàn bộ thông số từ UI thành dict cho core/io_handlers.
+
+        Tham số số được ép qua _pget; các thuộc tính 'gốc' (toạ độ/lực gốc đọc
+        từ file) được đính kèm nếu có. Trả về dict đầy đủ kèm SAFE_D mặc định.
+        """
+        d = {}
+        for k, v in self.params.items():
+            if k in self.NUMERIC_PARAMS:
+                d[k] = self._pget(k)
+            else:
+                d[k] = v.get()
         if hasattr(self, 'original_coords') and self.original_coords:
             d['original_coords'] = self.original_coords
         if hasattr(self, 'original_d'): d['original_d'] = self.original_d
@@ -406,8 +483,8 @@ class MainWindow:
         d['SAFE_D'] = d.get('D_PILE', 1.2)
         return d
 
-
     def browse_exe(self):
+        """Mở hộp thoại chọn đường dẫn MCOC Batch và lưu vào tham số exe_path."""
         filepath = filedialog.askopenfilename(
             title="Chọn MCOC Batch (Command Line)",
             filetypes=[("MCOC Batch", "*.lnk;*.exe;*.bat;*.cmd;*.py"), ("All Files", "*.*")])
@@ -415,47 +492,50 @@ class MainWindow:
             self.params['exe_path'].set(filepath)
 
     def load_file(self):
+        """Mở hộp thoại chọn nhiều file đầu vào rồi nạp chúng lên UI."""
         filepaths = filedialog.askopenfilenames(filetypes=[
-            ("All Supported Files", "*.csv;*.txt"), 
+            ("All Supported Files", "*.csv;*.txt"),
             ("Text Files", "*.txt"),
-            ("CSV Files", "*.csv"), 
+            ("CSV Files", "*.csv"),
             ("All Files", "*.*")
         ])
         if filepaths:
             self.process_multiple_files(filepaths)
-            
+
     def handle_drop(self, event):
-        filepath = event.data
-        
-        import re
-        # Lấy danh sách các file (xử lý trường hợp kéo thả nhiều file)
-        # Các file có dấu cách thường được bọc trong ngoặc nhọn {}
-        paths = re.findall(r'{[^}]+}|[^{ ]+', filepath)
+        """Xử lý sự kiện kéo-thả file vào cửa sổ chính."""
+        # Lấy danh sách file khi kéo-thả nhiều file; file có dấu cách
+        # thường được bọc trong ngoặc nhọn {}.
+        paths = _re.findall(r'{[^}]+}|[^{ ]+', event.data)
         if not paths: return
-        
+
         filepaths = [p.strip('{}') for p in paths]
         self.process_multiple_files(filepaths)
-        
+
     def process_multiple_files(self, filepaths):
+        """Đọc và nạp nhiều file đầu vào: cập nhật thông số, tải trọng, toạ độ
+        gốc lên UI; nhận diện file template MCOC; reset kết quả cũ."""
         success_count = 0
         total_new_loads = 0
         last_proj_name = ""
-        
+
         for filepath in filepaths:
             try:
                 params, loads, proj_name = parse_input_file(filepath)
-                
+
                 # Cập nhật tất cả thông số từ file lên UI
-                keys_to_update = ['L_X', 'L_Y', 'D_PILE', 'P_LIMIT', 'P_TENSION']
+                keys_to_update = ['L_X', 'L_Y', 'D_PILE', 'P_LIMIT', 'P_TENSION', 'M_LIMIT']
                 for k in keys_to_update:
-                    if k in params and params[k] > 0:
-                        self.params[k].set(params[k])
-                            
+                    if k in params and params[k] is not None and params[k] > 0:
+                        # StringVar: hiển thị gọn (bỏ ".0" thừa)
+                        val = params[k]
+                        self.params[k].set(f"{val:g}")
+
                 if 'original_coords' in params:
                     self.original_coords = params['original_coords']
                     if 'D_PILE' in params: self.original_d = params['D_PILE']
                     if 'P_LIMIT' in params: self.original_p = params['P_LIMIT']
-                
+
                 # Lưu Nmax/Nmin/Mxmax/Mymax thực tế từ file kết quả
                 if 'orig_pmax' in params: self.orig_pmax = params['orig_pmax']
                 if 'orig_pmin' in params: self.orig_pmin = params['orig_pmin']
@@ -463,8 +543,8 @@ class MainWindow:
                 if 'orig_mymax' in params: self.orig_mymax = params['orig_mymax']
                 self.result_filepath = filepath  # Lưu đường dẫn để blackbox đọc đúng file
 
-                # Neu la file INPUT MCOC (khong phai file ket qua/CSV) -> dung lam
-                # template sinh phuong an moi khi goi MCOC thuc
+                # Nếu là file INPUT MCOC (không phải file kết quả/CSV) -> dùng làm
+                # template sinh phương án mới khi gọi MCOC thực
                 if proj_name != 'Imported from Result' and not filepath.lower().endswith('.csv') \
                         and 'original_coords' in params:
                     self.input_filepath = filepath
@@ -479,11 +559,11 @@ class MainWindow:
                     last_proj_name = proj_name
             except Exception as e:
                 messagebox.showerror("Lỗi", f"Không thể đọc file {filepath}:\n{str(e)}")
-                
+
         if success_count > 0:
             if last_proj_name:
                 self.project_name = last_proj_name
-            # Reset ket qua cu — du lieu moi, ket qua moi
+            # Reset kết quả cũ — dữ liệu mới, kết quả mới
             self.current_config = None
             self.refresh_loads_ui()
 
@@ -497,23 +577,25 @@ class MainWindow:
             self.cb_config.set('')
             self.cb_config['values'] = []
 
-            # Xóa bớt mô phỏng cũ đi, để trống màn hình chờ người dùng ấn Tối Ưu
-            self.plot_canvas.draw_simulation([], self.get_params_dict())
+            # Để trống khung vẽ, chờ người dùng ấn "Chạy tối ưu hóa"
+            self.plot_canvas.clear()
 
-            
     def clear_loads(self):
+        """Xóa toàn bộ danh sách tải trọng và reset UI kết quả về trạng thái mới."""
         if messagebox.askyesno("Xác nhận", "Bạn có chắc chắn muốn xóa toàn bộ danh sách tổ hợp tải trọng không?"):
             self.loads = []
             self.refresh_loads_ui()
-            
+
             # Reset UI như lúc load file mới
             self.current_config = None
             self.txt_result.delete(1.0, tk.END)
             self.cb_config.set('')
             self.cb_config['values'] = []
-            self.plot_canvas.draw_simulation([], self.get_params_dict())
+            self.plot_canvas.clear()   # vẽ trắng như lúc mới mở
 
     def save_file(self):
+        """Xuất kết quả phương án hiện hành: file TXT (MCOC), báo cáo .md và ảnh
+        mặt bằng PNG cho từng phương án (BEST hoặc ALL)."""
         if not self.current_config:
             messagebox.showwarning("Cảnh báo", "Chưa có kết quả để xuất. Vui lòng chạy Tối ưu hóa trước.")
             return
@@ -527,11 +609,10 @@ class MainWindow:
             return
 
         try:
-            import os
             base_dir  = os.path.dirname(filepath)
             base_name = os.path.splitext(os.path.basename(filepath))[0]
 
-            # 1. Xuất file TXT kết quả
+            # 1. Xuất file TXT kết quả (định dạng MCOC)
             export_output_file(
                 filepath,
                 self.current_config,
@@ -540,6 +621,15 @@ class MainWindow:
                 getattr(self, 'project_name', 'Du An Toi Uu Coc'),
                 self.output_option.get()
             )
+
+            # 1b. Xuất BÁO CÁO KỸ THUẬT chuẩn (.md) — hệ số sử dụng, R1-R8, phụ lục
+            report_path = os.path.join(base_dir, f"{base_name}_baocao_kythuat.md")
+            try:
+                export_technical_report(
+                    report_path, self.current_config, self.get_params_dict(),
+                    self.loads, getattr(self, 'project_name', 'Du An Toi Uu Coc'))
+            except Exception:
+                report_path = None
 
             # 2. Xuất ảnh mặt bằng PNG
             exported_imgs = []
@@ -571,99 +661,201 @@ class MainWindow:
             import traceback
             messagebox.showerror("Lỗi", f"Không thể xuất file: {str(e)}\n\n{traceback.format_exc()[-300:]})")
 
+    # ========================================================================
+    # TAB 1 - TƯƠNG TÁC: CHẠY TỐI ƯU & HIỂN THỊ KẾT QUẢ
+    # ========================================================================
     def run_optimize(self):
-        # Che do HOP DEN THUC: goi MCOC + tinh chinh tung buoc
-        if self.var_use_real.get():
-            self.run_refine_real()
+        """Chạy tối ưu — mặc định ĐÁNH GIÁ CHÍNH XÁC bằng MCOC (NSGA-II)."""
+        # 0) Phải nhập đủ thông số bài toán bắt buộc (> 0)
+        required = {'L_X': "Rộng bệ Lx", 'L_Y': "Dài bệ Ly",
+                    'D_PILE': "Đ.kính cọc d", 'P_LIMIT': "Sức nén [Po]"}
+        missing = [name for k, name in required.items() if self._pget(k) <= 0]
+        if missing:
+            messagebox.showwarning(
+                "Chưa nhập đủ thông số",
+                "Vui lòng nhập (giá trị > 0) cho: " + ", ".join(missing) + ".")
             return
 
-        self.txt_result.delete(1.0, tk.END)
-        self.txt_result.insert(tk.END, "Dang tim kiem...\n")
-        self.root.update()
+        # 1) Phải có tải trọng
+        if not self.loads:
+            messagebox.showwarning(
+                "Chưa có tải trọng",
+                "Vui lòng thêm ít nhất một tổ hợp tải trọng "
+                "(nút \"Thêm tổ hợp\", \"Dán nhiều dòng (CSV)\" hoặc mở file đầu vào).")
+            return
 
-        results = run_optimization(self.get_params_dict(), self.loads)
-        self.current_config = results
+        # 2) BẮT BUỘC MCOC — không chấp nhận phương án xấp xỉ
+        exe = self.params['exe_path'].get().strip()
+        if not exe or not os.path.exists(exe):
+            messagebox.showwarning(
+                "Cần cấu hình MCOC",
+                "Chương trình đánh giá mọi phương án bằng MCOC (chính xác).\n"
+                "Hãy chọn đường dẫn MCOC Batch ở mục \"Cấu hình MCOC (bắt buộc)\".")
+            return
+        if (not self.input_filepath or not os.path.exists(self.input_filepath)
+                or not getattr(self, 'original_coords', None)):
+            messagebox.showwarning(
+                "Thiếu file MCOC gốc",
+                "Cần mở FILE INPUT MCOC gốc (.txt, có tọa độ cọc gốc) làm template.\n"
+                "Dùng \"Mở file đầu vào\" để nạp file input MCOC — không phải file _result hay CSV.")
+            return
+
+        params = self.get_params_dict()
+        params['input_filepath'] = self.input_filepath
+        params['mock_mode'] = False
+        loads = list(self.loads)
+
         self.txt_result.delete(1.0, tk.END)
-        
-        P_LIMIT = self.params['P_LIMIT'].get()
-        P_TENSION = self.params['P_TENSION'].get()
-        
-        # --- Phan 1: Trang thai phuong an goc ---
+        self._log_refine("=== TỐI ƯU BẰNG MCOC (NSGA-II — đánh giá chính xác) ===")
+        self._log_refine("Đang chạy MCOC, vui lòng đợi...")
+
+        def worker():
+            try:
+                from io_handlers.mcoc_writer import self_check
+                from core.nsga2_optimizer import run_nsga2
+                ok, msg = self_check(self.input_filepath, params['original_coords'])
+                if not ok:
+                    self._log_refine("LỖI TEMPLATE: " + msg)
+                    return
+                # Tải trọng lấy TỪ UI (ghi đè tải trong file MCOC gốc) — UI là nguồn duy nhất
+                evaluator = MCOCBlackbox.make_real_evaluator(params, loads=loads, log=self._log_refine)
+                # Chấm phương án gốc (để so sánh) — cùng bộ tải UI
+                orig_res = evaluator(np.array(params['original_coords'], dtype=float))
+                results = run_nsga2(params, loads, evaluator=evaluator,
+                                    pop_size=16, n_gen=10, max_evals=50,
+                                    secondary=self.var_secondary.get(),
+                                    log=self._log_refine)
+                results['_orig_eval'] = (len(params['original_coords']), orig_res)
+                self.root.after(0, lambda: self._show_nsga2_results(results))
+            except Exception as e:
+                import traceback
+                self._log_refine("LỖI: %s" % e)
+                self._log_refine(traceback.format_exc()[-300:])
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _show_nsga2_results(self, results):
+        """Hiển thị kết quả NSGA-II + MCOC: chuyển về cấu trúc dùng chung."""
+        P_LIMIT = self._pget('P_LIMIT')
+        orig_cfg = None
+        oe = results.get('_orig_eval')
+        if oe:
+            n0, r0 = oe
+            orig_cfg = {
+                'type': 'Goc', 'nx': 0, 'ny': 0, 'sx': 0, 'sy': 0, 'n': n0,
+                'coords': self.original_coords,
+                'pmax': r0.get('pmax', 0), 'pmin': r0.get('pmin', 0),
+                'mxmax': r0.get('mxmax', 0), 'mymax': r0.get('mymax', 0),
+                'ok': r0.get('pmax', 1e9) <= P_LIMIT, 'msg': 'Phuong an goc (MCOC)',
+            }
+        all_mode = self.output_option.get() != "BEST"
+        valid = results.get('all_valid_configs', []) if all_mode else results.get('pareto_front', [])
+        self.current_config = {
+            'recommended': results.get('recommended'),
+            'original_config': orig_cfg,
+            'all_valid_configs': valid,
+            'all_candidates': [],
+            'best_A': results.get('best_A'), 'best_B': results.get('best_B'),
+            'reason': results.get('reason', ''),
+        }
+        self.txt_result.delete(1.0, tk.END)
+        self._render_results(self.current_config, results.get('n_evals'))
+        self.populate_comboboxes(self.current_config)
+
+    def _render_results(self, results, n_evals=None):
+        """In kết quả ra ô 'Kết quả Đánh giá' theo bố cục gọn, kèm bảng tọa độ."""
+        P_LIMIT = self._pget('P_LIMIT')
+        M_LIMIT = self._pget('M_LIMIT')
+        P_TENSION = self._pget('P_TENSION')
+        W = 60
+        ins = lambda s="": self.txt_result.insert(tk.END, s + "\n")
+        rec = results.get('recommended')
         orig = results.get('original_config')
+
+        ins("=" * W)
+        ins("  PHUONG AN KIEN NGHI")
+        ins("=" * W)
+        if rec:
+            type_str = {'A': 'Truc giao (A)', 'B': 'So le (B)',
+                        'Goc': 'Giu nguyen phuong an goc'}.get(rec['type'], rec['type'])
+            ins(f"  Kieu        : {type_str}")
+            ins(f"  So coc      : {rec['n']} coc"
+                + (f"   (luoi {rec['nx']} x {rec['ny']})" if rec.get('nx') else ""))
+            if rec.get('sx'):
+                ins(f"  Khoang cach : sx = {rec['sx']:.2f} m   sy = {rec['sy']:.2f} m")
+            util = f"   ({rec['pmax']/P_LIMIT*100:.1f}% [Po])" if P_LIMIT > 0 else ""
+            ins(f"  Pmax        : {rec['pmax']:.2f} T{util}")
+            ins(f"  Pmin        : {rec['pmin']:.2f} T")
+            if M_LIMIT > 0:
+                ins(f"  Mmax        : {max(rec.get('mxmax',0), rec.get('mymax',0)):.2f} T.m")
+            ins(f"  Ly do       : {results.get('reason', '')}")
+            ins("")
+            ins("  TOA DO DAU COC (m):")
+            ins(f"     {'#':>3}  {'X':>9}  {'Y':>9}")
+            ins("     " + "-" * 25)
+            for i, (x, y) in enumerate(rec['coords']):
+                ins(f"     {i+1:>3}  {float(x):>9.3f}  {float(y):>9.3f}")
+        else:
+            ins("  Khong tim thay phuong an thoa man.")
+            ins(f"  Ly do: {results.get('reason', '')}")
+        ins("")
+
         if orig:
             status = "DAT" if orig['ok'] else "KHONG DAT"
-            self.txt_result.insert(tk.END, f"=== PHUONG AN GOC TRONG FILE ({status}) ===\n")
-            self.txt_result.insert(tk.END, f"  So coc: {orig['n']}\n")
-            self.txt_result.insert(tk.END, f"  Pmax = {orig['pmax']:.2f} T  (Gioi han: {P_LIMIT:.0f} T)\n")
-            self.txt_result.insert(tk.END, f"  Pmin = {orig['pmin']:.2f} T  (Gioi han chiu nho: -{P_TENSION:.0f} T)\n")
-            mmax_orig = max(orig.get('mxmax',0), orig.get('mymax',0))
-            if self.params['M_LIMIT'].get() > 0:
-                self.txt_result.insert(tk.END, f"  Mmax = {mmax_orig:.2f} T.m  (Gioi han uon: {self.params['M_LIMIT'].get():.0f} T.m)\n")
-            else:
-                self.txt_result.insert(tk.END, f"  Mmax = {mmax_orig:.2f} T.m  (Khong kiem tra uon)\n")
-            if not orig['ok']:
-                self.txt_result.insert(tk.END, f"  >> Ly do: {orig['msg']}\n")
-            self.txt_result.insert(tk.END, "\n")
-        
-        # --- Phan 2: Ket qua kiem tra toan bo khong gian ---
-        all_cands = results.get('all_candidates', [])
-        if self.output_option.get() == "BEST":
-            all_cands = [c for c in all_cands if c['ok']]
-            
-        if all_cands:
-            self.txt_result.insert(tk.END, f"=== KIEM TRA TOAN BO LUOI PHAN BO ({len(all_cands)} phuong an) ===\n")
-            self.txt_result.insert(tk.END, f"{'Kieu':<5} {'nx':>3} {'ny':>3} {'n':>4} {'sx':>6} {'sy':>6} {'Pmax':>8} {'Pmin':>8} {'Mmax':>8}  {'Trang thai'}\n")
-            self.txt_result.insert(tk.END, "-" * 75 + "\n")
-            for c in all_cands:
-                status_str = "DAT" if c['ok'] else "KHONG DAT"
-                # Hiển thị toàn bộ lý do (msg) để đảm bảo tính đồng nhất
-                clean_msg = c['msg'].replace('Không đạt: ', '') if c['msg'] else ""
-                reason_str = "" if c['ok'] else f"  <- {clean_msg}"
-                mmax_val = max(c.get('mxmax', 0), c.get('mymax', 0))
-                self.txt_result.insert(tk.END,
-                    f"  {c['type']:<4} {c['nx']:>3} {c['ny']:>3} {c['n']:>4} "
-                    f"{c['sx']:>6.2f} {c['sy']:>6.2f} {c['pmax']:>8.1f} {c['pmin']:>8.1f} {mmax_val:>8.1f}  "
-                    f"{status_str}{reason_str}\n"
-                )
-            self.txt_result.insert(tk.END, "\n")
-        else:
-            self.txt_result.insert(tk.END, "Khong co phuong an luoi nao hop le trong kich thuoc be nay.\n\n")
-        
-        # --- Phan 3: Ket luan ---
-        rec = results.get('recommended')
-        if rec:
-            self.txt_result.insert(tk.END, "=== PHUONG AN KIEN NGHI ===\n")
-            if rec['type'] == 'Goc':
-                self.txt_result.insert(tk.END, f"  >> Giu nguyen phuong an goc ({rec['n']} coc)\n")
-            else:
-                type_str = "Truc giao" if rec['type'] == 'A' else "So le"
-                self.txt_result.insert(tk.END, f"  >> Kieu {rec['type']} ({type_str}): {rec['nx']}x{rec['ny']} = {rec['n']} coc\n")
-                self.txt_result.insert(tk.END, f"     sx = {rec['sx']:.2f} m, sy = {rec['sy']:.2f} m\n")
-            self.txt_result.insert(tk.END, f"     Pmax = {rec['pmax']:.2f} T\n")
-            self.txt_result.insert(tk.END, f"     Pmin = {rec['pmin']:.2f} T\n")
-            if self.params['M_LIMIT'].get() > 0:
-                self.txt_result.insert(tk.END, f"     Mmax = {max(rec.get('mxmax',0), rec.get('mymax',0)):.2f} T.m\n")
-            else:
-                self.txt_result.insert(tk.END, f"     Mmax = {max(rec.get('mxmax',0), rec.get('mymax',0)):.2f} T.m\n")
-            self.txt_result.insert(tk.END, f"  Ly do: {results.get('reason', '')}\n")
-            
-            self.populate_comboboxes(results)
-        else:
-            self.txt_result.insert(tk.END, "=== KET LUAN ===\n")
-            self.txt_result.insert(tk.END, f"  {results.get('reason', 'Khong tim thay phuong an nao thoa man.')}\n")
-            # Van populate comboboxes va ve mo phong cho phuong an goc (du KHONG DAT)
-            self.populate_comboboxes(results)
+            ins("-" * W)
+            ins(f"  PHUONG AN GOC : {status}")
+            ins("-" * W)
+            ins(f"  So coc = {orig['n']}    Pmax = {orig['pmax']:.2f} T   (Po = {P_LIMIT:.0f} T)")
+            ins(f"  Pmin = {orig['pmin']:.2f} T")
+            ins("")
 
-    # ───────── HOP DEN MCOC THUC: tinh chinh tung buoc ─────────
+        show = results.get('all_valid_configs', [])
+        ins("-" * W)
+        ins(f"  CAC PHUONG AN DAT (MCOC)  -  {len(show)} phuong an")
+        ins("-" * W)
+        if show:
+            # Cột Pmin chỉ hiện khi có kiểm nhổ ([Ct] > 0); cột Mmax khi có [M] > 0.
+            show_pmin = P_TENSION > 0
+            show_m = M_LIMIT > 0
+            header = f"  {'Kieu':<5}{'nx':>3}{'ny':>3}{'n':>5}{'sx':>7}{'sy':>7}{'Pmax':>9}"
+            if show_pmin:
+                header += f"{'Pmin':>9}"
+            if show_m:
+                header += f"{'Mmax':>9}"
+            ins(header)
+            for c in show:
+                row = (f"  {c['type']:<5}{c.get('nx',0):>3}{c.get('ny',0):>3}{c['n']:>5}"
+                       f"{c.get('sx',0):>7.2f}{c.get('sy',0):>7.2f}{c['pmax']:>9.1f}")
+                if show_pmin:
+                    row += f"{c.get('pmin',0):>9.1f}"
+                if show_m:
+                    row += f"{max(c.get('mxmax',0), c.get('mymax',0)):>9.1f}"
+                ins(row)
+            # Chú thích giới hạn để tiện đối chiếu
+            notes = [f"Po={P_LIMIT:.0f} T"]
+            if show_pmin:
+                notes.append(f"[Ct]={P_TENSION:.0f} T (Pmin >= -[Ct])")
+            if show_m:
+                notes.append(f"[M]={M_LIMIT:.0f} T.m")
+            ins(f"  (Gioi han: {', '.join(notes)})")
+        else:
+            ins("  Khong co phuong an nao DAT trong kich thuoc be nay.")
+        if n_evals is not None:
+            ins(f"\n  So lan goi MCOC: {n_evals}")
 
+    # ========================================================================
+    # TAB 1 - TƯƠNG TÁC: HỘP ĐEN MCOC THỰC (tinh chỉnh từng bước)
+    # ========================================================================
     def _log_refine(self, msg):
-        """Ghi log tu thread tinh chinh len o ket qua (thread-safe)."""
+        """Ghi log từ thread tinh chỉnh lên ô kết quả (thread-safe)."""
         def _append():
             self.txt_result.insert(tk.END, msg + "\n")
             self.txt_result.see(tk.END)
         self.root.after(0, _append)
 
     def run_refine_real(self):
+        """Chạy chế độ MCOC thực: tinh chỉnh Pareto từng bước trên thread nền,
+        dùng file input MCOC gốc làm template."""
         exe = self.params['exe_path'].get().strip()
         if not exe:
             messagebox.showwarning("Thiếu MCOC", "Chưa chọn đường dẫn MCOC Batch (Command Line).")
@@ -689,7 +881,7 @@ class MainWindow:
 
         def worker():
             try:
-                # Kiem tra template truoc khi chay
+                # Kiểm tra template trước khi chạy
                 from io_handlers.mcoc_writer import self_check
                 ok, msg = self_check(self.input_filepath, params['original_coords'])
                 if not ok:
@@ -706,7 +898,7 @@ class MainWindow:
         threading.Thread(target=worker, daemon=True).start()
 
     def _show_refine_results(self, results):
-        """Chuyen ket qua tinh chinh ve cau truc cu de tai dung combobox/canvas."""
+        """Chuyển kết quả tinh chỉnh về cấu trúc cũ để tái dùng combobox/canvas."""
         def to_cfg(rec, type_name):
             if rec is None:
                 return None
@@ -730,28 +922,47 @@ class MainWindow:
         }
 
         best = results['best']
-        self.txt_result.insert(tk.END, "\n=== KET LUAN ===\n")
+        ins = lambda s="": self.txt_result.insert(tk.END, s + "\n")
+        P_LIMIT = self._pget('P_LIMIT')
+        ins("\n" + "=" * 60)
+        ins("  KET LUAN (MCOC)")
+        ins("=" * 60)
         if best:
             orig = results['original']
-            self.txt_result.insert(tk.END,
-                "  Goc   : %d coc, Pmax = %.2f T\n" % (orig['n'], orig['pmax']))
-            self.txt_result.insert(tk.END,
-                "  Toi uu: %d coc, Pmax = %.2f T, Pmin = %.2f T\n"
-                % (best['n'], best['pmax'], best['pmin']))
-            self.txt_result.insert(tk.END,
-                "  So lan goi MCOC: %d\n" % results['n_calls'])
-        self.txt_result.insert(tk.END, "  %s\n" % results['reason'])
+            util = f"   ({best['pmax']/P_LIMIT*100:.1f}% [Po])" if P_LIMIT > 0 else ""
+            ins("  Goc    : %d coc, Pmax = %.2f T" % (orig['n'], orig['pmax']))
+            ins("  Toi uu : %d coc, Pmax = %.2f T%s, Pmin = %.2f T"
+                % (best['n'], best['pmax'], util, best['pmin']))
+            ins("  So lan goi MCOC: %d" % results['n_calls'])
+
+            # --- Bảng toạ độ đầu cọc cho phương án tối ưu ---
+            ins("")
+            ins("  TOA DO DAU COC (m):")
+            ins(f"     {'#':>3}  {'X':>9}  {'Y':>9}")
+            ins("     " + "-" * 25)
+            for i, (x, y) in enumerate(best['coords']):
+                ins(f"     {i+1:>3}  {float(x):>9.3f}  {float(y):>9.3f}")
+            ins("")
+        ins("  %s" % results['reason'])
         self.populate_comboboxes(self.current_config)
 
+    # ========================================================================
+    # TAB 1 - TƯƠNG TÁC: MÔ PHỎNG & COMBOBOX
+    # ========================================================================
     def update_simulation(self, event=None):
+        """Vẽ lại mô phỏng mặt bằng cho phương án + tổ hợp tải đang chọn.
+
+        Lấy lực cọc theo mô hình bệ cứng rồi hiệu chỉnh theo hệ số khớp Pmax
+        thực (MCOC) để hình vẽ đồng nhất với phần kết luận.
+        """
         if not self.current_config: return
-        
+
         idx_load = self.cb_load_case.current()
         if idx_load < 0: idx_load = 0
-        
+
         config_name = self.cb_config.get()
         selected_cfg = None
-        
+
         if config_name == "Ph\u01b0\u01a1ng \u00e1n g\u1ed1c":
             selected_cfg = self.current_config.get('original_config')
         elif config_name == "Ph\u01b0\u01a1ng \u00e1n \u0111\u1ec1 xu\u1ea5t":
@@ -762,93 +973,80 @@ class MainWindow:
                 selected_cfg = self.current_config['all_valid_configs'][num - 1]
             except:
                 pass
-                
+
         if not selected_cfg: return
-        
-        import numpy as np
-        coords = np.array(selected_cfg['coords'])  # Ep ve numpy array, xu ly ca list lan array
+
+        coords = np.array(selected_cfg['coords'])  # Ép về numpy array, xử lý cả list lẫn array
         if coords.ndim != 2 or coords.shape[0] == 0: return
-        
-        n_piles = len(coords)
+
         forces = None
-        
-        calibration_factor = 1.0
         params_dict = self.get_params_dict()
 
-        # Uu tien: hieu chinh theo Pmax THUC (MCOC) cua chinh phuong an dang xem,
-        # de luc ve tren canvas khop voi ket qua o phan ket luan.
+        # Hệ số hiệu chỉnh: ưu tiên khớp Pmax THỰC (MCOC) của phương án đang xem,
+        # để lực vẽ trên canvas đồng nhất với kết quả ở phần kết luận.
+        calibration_factor = 1.0
         cfg_pmax = selected_cfg.get('pmax', 0) or 0
-        cfg_rigid_pmax = 0.0
-        if self.loads:
-            from core.blackbox import MCOCBlackbox
-            cfg_rigid_pmax = MCOCBlackbox._rigid_cap_pmax(coords, self.loads)
+        cfg_rigid_pmax = rigid_cap.pmax_pmin(coords, self.loads)[0] if self.loads else 0.0
         if cfg_pmax > 0 and cfg_rigid_pmax > 0:
-            calibration_factor = cfg_pmax / cfg_rigid_pmax
-        elif hasattr(self, 'original_coords') and self.original_coords and self.loads:
-            from core.blackbox import MCOCBlackbox
+            calibration_factor = rigid_cap.calibration_factor(cfg_rigid_pmax, cfg_pmax)
+        elif getattr(self, 'original_coords', None) and self.loads:
             orig_pmax_actual = params_dict.get('orig_pmax', 519.63)
-            orig_arr = np.array(self.original_coords)
-            orig_rigid_pmax = MCOCBlackbox._rigid_cap_pmax(orig_arr, self.loads)
-            if orig_rigid_pmax > 0:
-                calibration_factor = orig_pmax_actual / orig_rigid_pmax
-        
-        # Luon tinh forces bang mo hinh be cung - ke ca khi KHONG DAT
-        if self.loads and len(self.loads) > 0:
-            load_idx = min(idx_load, len(self.loads) - 1)
-            load = self.loads[load_idx]
-            N  = load.get('N', 0)
-            Mx = load.get('Mx', 0)
-            My = load.get('My', 0)
-            
-            cg_x = float(np.mean(coords[:, 0]))
-            cg_y = float(np.mean(coords[:, 1]))
-            I_x = float(np.sum((coords[:, 1] - cg_y)**2)) or 1e-9
-            I_y = float(np.sum((coords[:, 0] - cg_x)**2)) or 1e-9
-            
-            forces = []
-            for (x, y) in coords:
-                dx = x - cg_x
-                dy = y - cg_y
-                p = N / n_piles + Mx * dy / I_x + My * dx / I_y
-                forces.append(p * calibration_factor)
-                
+            orig_rigid_pmax = rigid_cap.pmax_pmin(self.original_coords, self.loads)[0]
+            calibration_factor = rigid_cap.calibration_factor(orig_rigid_pmax, orig_pmax_actual)
+
+        # Luôn tính forces bằng mô hình bệ cứng — kể cả khi KHÔNG ĐẠT
+        if self.loads:
+            load = self.loads[min(idx_load, len(self.loads) - 1)]
+            raw = rigid_cap.pile_forces(coords, load)          # công thức dùng chung
+            forces = [float(p) * calibration_factor for p in raw]
+
         mxmax = selected_cfg.get('mxmax', 0)
         mymax = selected_cfg.get('mymax', 0)
-            
+
         self.plot_canvas.draw_simulation(coords, self.get_params_dict(), forces, m_forces=(mxmax, mymax))
-        
+
     def populate_comboboxes(self, results):
+        """Nạp combobox phương án + tổ hợp tải; mặc định chọn tổ hợp bất lợi nhất
+        và phương án đề xuất rồi vẽ mô phỏng."""
         cases = [f"Tổ hợp {i+1}" for i in range(len(self.loads))]
         self.cb_load_case['values'] = cases
         if cases:
-            self.cb_load_case.current(0)
-            
+            # Mặc định về TỔ HỢP BẤT LỢI NHẤT (cho Pmax lớn nhất) của phương án đề xuất
+            worst = 0
+            rec = results.get('recommended')
+            if rec and self.loads:
+                P = rigid_cap.forces_all_loads(np.asarray(rec['coords'], float), self.loads)
+                if getattr(P, 'size', 0):
+                    worst = int(np.argmax(P.max(axis=1)))
+            self.cb_load_case.current(min(worst, len(cases) - 1))
+
         config_names = []
         if results.get('original_config'):
             config_names.append("Phương án gốc")
-            
+
         config_names.append("Phương án đề xuất")
-        
+
         for i in range(len(results.get('all_valid_configs', []))):
             config_names.append(f"Phương án {i+1}")
-            
+
         self.cb_config['values'] = config_names
         if config_names:
-            # Uu tien hien Phuong an de xuat; neu khong co, hien Phuong an goc
+            # Ưu tiên hiện Phương án đề xuất; nếu không có, hiện Phương án gốc
             if "Ph\u01b0\u01a1ng \u00e1n \u0111\u1ec1 xu\u1ea5t" in config_names and results.get('recommended'):
                 self.cb_config.set("Ph\u01b0\u01a1ng \u00e1n \u0111\u1ec1 xu\u1ea5t")
             elif "Ph\u01b0\u01a1ng \u00e1n g\u1ed1c" in config_names:
                 self.cb_config.set("Ph\u01b0\u01a1ng \u00e1n g\u1ed1c")
             else:
                 self.cb_config.current(0)
-                
+
         self.update_simulation()
 
-    # ================= BATCH MODE =================
-
+    # ========================================================================
+    # TAB 2 - HÀNG LOẠT: DỰNG GIAO DIỆN
+    # ========================================================================
     def setup_batch_ui(self, parent_frame):
         """Giao di\u1ec7n Tab 2 \u2014 thi\u1ebft k\u1ebf theo layout MCOC."""
-        # \u2500\u2500 Toolbar tr\u00ean c\u00f9ng \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # ── Toolbar trên cùng ──────────────────────────────────────────
         toolbar = tk.Frame(parent_frame, pady=4, padx=6)
         toolbar.pack(fill=tk.X)
         ttk.Button(toolbar, text="Th\u00eam file",    command=self.load_file_batch).pack(side=tk.LEFT, padx=3)
@@ -856,11 +1054,11 @@ class MainWindow:
         tk.Label(toolbar, text="K\u00e9o th\u1ea3 nhi\u1ec1u file ho\u1eb7c th\u01b0 m\u1ee5c v\u00e0o v\u00f9ng d\u1eef li\u1ec7u \u0111\u1ea7u v\u00e0o.",
                  fg="#555").pack(side=tk.RIGHT, padx=6)
 
-        # \u2500\u2500 Body: chia \u0111\u00f4i tr\u00e1i / ph\u1ea3i \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # ── Body: chia đôi trái / phải ──────────────────────────────
         body = ttk.PanedWindow(parent_frame, orient=tk.HORIZONTAL)
         body.pack(fill=tk.BOTH, expand=True, padx=6, pady=(0, 4))
 
-        # \u2500\u2500 Panel tr\u00e1i: Danh s\u00e1ch file \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # ── Panel trái: Danh sách file ───────────────────────────
         left = tk.LabelFrame(body, text="D\u1eef li\u1ec7u \u0111\u1ea7u v\u00e0o", padx=4, pady=4)
         body.add(left, weight=3)
 
@@ -874,7 +1072,7 @@ class MainWindow:
         self.tree_batch.column("T\u00ean file",    width=160, anchor="w")
         self.tree_batch.column("Th\u01b0 m\u1ee5c",   width=320, anchor="w")
         self.tree_batch.column("Tr\u1ea1ng th\u00e1i",  width=100, anchor="center", stretch=False)
-        # M\u00e0u tag tr\u1ea1ng th\u00e1i
+        # Màu tag trạng thái
         self.tree_batch.tag_configure("done",    foreground="#27ae60")
         self.tree_batch.tag_configure("running", foreground="#2980b9")
         self.tree_batch.tag_configure("fail",    foreground="#e74c3c")
@@ -885,7 +1083,7 @@ class MainWindow:
         self.tree_batch.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sb_b.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Footer \u0111\u1ebfm file + n\u00fat x\u00f3a
+        # Footer đếm file + nút xóa
         foot = tk.Frame(left)
         foot.pack(fill=tk.X, pady=(4, 0))
         self.lbl_batch_count = tk.Label(foot, text="0 file", fg="#555")
@@ -893,15 +1091,15 @@ class MainWindow:
         ttk.Button(foot, text="X\u00f3a ch\u1ecdn", command=self.delete_selected_batch).pack(side=tk.RIGHT, padx=3)
         ttk.Button(foot, text="X\u00f3a t\u1ea5t c\u1ea3",  command=self.clear_all_batch).pack(side=tk.RIGHT, padx=3)
 
-        # Drag-drop v\u00e0o danh s\u00e1ch
+        # Drag-drop vào danh sách
         self.tree_batch.drop_target_register(DND_FILES)
         self.tree_batch.dnd_bind("<<Drop>>", self._batch_drop)
 
-        # \u2500\u2500 Panel ph\u1ea3i: Thi\u1ebft l\u1eadp ch\u1ea1y \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # ── Panel phải: Thiết lập chạy ─────────────────────────
         right = tk.LabelFrame(body, text="Thi\u1ebft l\u1eadp ch\u1ea1y", padx=8, pady=6)
         body.add(right, weight=2)
 
-        # Th\u01b0 m\u1ee5c xu\u1ea5t k\u1ebft qu\u1ea3
+        # Thư mục xuất kết quả
         tk.Label(right, text="Th\u01b0 m\u1ee5c xu\u1ea5t k\u1ebft qu\u1ea3", font=("", 9, "bold"), anchor="w").pack(fill=tk.X)
         dir_f = tk.Frame(right)
         dir_f.pack(fill=tk.X, pady=(2, 0))
@@ -913,7 +1111,7 @@ class MainWindow:
 
         ttk.Separator(right, orient="horizontal").pack(fill=tk.X, pady=6)
 
-        # Tab xu\u1ea5t (Xu\u1ea5t k\u1ebft qu\u1ea3 / Thi\u1ebft l\u1eadp n\u00e2ng cao)
+        # Tab xuất (Xuất kết quả / Thiết lập nâng cao)
         nb_right = ttk.Notebook(right)
         nb_right.pack(fill=tk.BOTH, expand=True)
 
@@ -923,7 +1121,7 @@ class MainWindow:
         tab_adv = tk.Frame(nb_right, padx=6, pady=6)
         nb_right.add(tab_adv, text="N\u00e2ng cao")
 
-        # Tab xu\u1ea5t k\u1ebft qu\u1ea3
+        # Tab xuất kết quả
         self.var_export_pdf   = tk.BooleanVar(value=True)
         self.var_export_excel = tk.BooleanVar(value=True)
         self.var_export_png   = tk.BooleanVar(value=True)
@@ -950,7 +1148,7 @@ class MainWindow:
         self.txt_suffix = tk.Entry(pf, width=18)
         self.txt_suffix.grid(row=1, column=1, padx=4, pady=2)
 
-        # Tab n\u00e2ng cao
+        # Tab nâng cao
         self.var_override_params = tk.BooleanVar(value=False)
         tk.Checkbutton(
             tab_adv,
@@ -962,7 +1160,7 @@ class MainWindow:
                       "B\u1eadt l\u00ean khi mu\u1ed1n so s\u00e1nh nhi\u1ec1u ph\u01b0\u01a1ng \u00e1n c\u00f9ng m\u1ed9t gi\u1edbi h\u1ea1n.",
                  fg="#555", justify="left").pack(anchor="w")
 
-        # \u2500\u2500 Ti\u1ebfn tr\u00ecnh: progress bar + log \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # ── Tiến trình: progress bar + log ──────────────────────
         prog_outer = tk.LabelFrame(parent_frame, text="Ti\u1ebfn tr\u00ecnh", padx=6, pady=4)
         prog_outer.pack(fill=tk.BOTH, expand=False, padx=6, pady=(0, 4))
 
@@ -980,13 +1178,13 @@ class MainWindow:
         self.txt_batch_log.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         sb_log.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Tag m\u00e0u log
+        # Tag màu log
         self.txt_batch_log.tag_configure("ok",    foreground="#4ec9b0")
         self.txt_batch_log.tag_configure("err",   foreground="#f44747")
         self.txt_batch_log.tag_configure("info",  foreground="#9cdcfe")
         self.txt_batch_log.tag_configure("title", foreground="#dcdcaa", font=("Consolas", 9, "bold"))
 
-        # \u2500\u2500 Status bar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # ── Status bar ─────────────────────────────────────
         status_bar = tk.Frame(parent_frame, pady=6, padx=6)
         status_bar.pack(fill=tk.X)
 
@@ -1009,11 +1207,12 @@ class MainWindow:
 
         self.batch_files = []  # list of dicts: {'path': str, 'status': str}
 
-    # \u2500\u2500 Batch helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
+    # ========================================================================
+    # TAB 2 - HÀNG LOẠT: QUẢN LÝ DANH SÁCH FILE & TRẠNG THÁI
+    # ========================================================================
     def _batch_drop(self, event):
-        import re, os
-        paths = re.findall(r'\{[^}]+\}|[^{ ]+', event.data)
+        """Xử lý kéo-thả file/thư mục vào danh sách hàng loạt (lọc .txt trong thư mục)."""
+        paths = _re.findall(r'\{[^}]+\}|[^{ ]+', event.data)
         filepaths = []
         for p in paths:
             p = p.strip('{}')
@@ -1026,12 +1225,13 @@ class MainWindow:
         self.add_files_to_batch(filepaths)
 
     def load_file_batch(self):
+        """Chọn nhiều file (.txt/.csv) thêm vào danh sách hàng loạt."""
         fps = filedialog.askopenfilenames(
             filetypes=[("Text / CSV Files", "*.txt *.csv"), ("All Files", "*.*")])
         self.add_files_to_batch(fps)
 
     def load_folder_batch(self):
-        import os
+        """Chọn một thư mục và thêm mọi file .txt/.csv trong đó vào danh sách."""
         folder = filedialog.askdirectory(title="Ch\u1ecdn th\u01b0 m\u1ee5c ch\u1ee9a c\u00e1c file \u0111\u1ea7u v\u00e0o")
         if not folder:
             return
@@ -1044,7 +1244,7 @@ class MainWindow:
         self.add_files_to_batch(fps)
 
     def add_files_to_batch(self, filepaths):
-        import os
+        """Thêm danh sách đường dẫn vào hàng loạt (bỏ qua file trùng) và cập nhật bảng."""
         added = 0
         for fp in filepaths:
             if any(f['path'] == fp for f in self.batch_files):
@@ -1060,56 +1260,60 @@ class MainWindow:
         self.lbl_batch_count.config(text=f"{len(self.batch_files)} file")
 
     def delete_selected_batch(self):
+        """Xóa các file đang chọn khỏi danh sách hàng loạt và đánh số lại."""
         sel = self.tree_batch.selection()
         if not sel:
             return
-        # X\u00e1c \u0111\u1ecbnh t\u1eadp \u0111\u01b0\u1eddng d\u1eabn c\u1ea7n x\u00f3a
+        # Xác định tập đường dẫn cần xóa
         paths_to_remove = set()
         for item in sel:
             vals = self.tree_batch.item(item, 'values')
             fname = vals[1]; fdir = vals[2]
-            import os
             paths_to_remove.add(os.path.join(str(fdir), str(fname)))
         self.batch_files = [f for f in self.batch_files if f['path'] not in paths_to_remove]
         for item in sel:
             self.tree_batch.delete(item)
-        # \u0110\u00e1nh s\u1ed1 l\u1ea1i
+        # Đánh số lại
         for i, item in enumerate(self.tree_batch.get_children(), 1):
             vals = self.tree_batch.item(item, 'values')
             self.tree_batch.item(item, values=(i, vals[1], vals[2], vals[3]))
         self.lbl_batch_count.config(text=f"{len(self.batch_files)} file")
 
     def clear_all_batch(self):
+        """Xóa toàn bộ danh sách file hàng loạt."""
         self.batch_files.clear()
         for item in self.tree_batch.get_children():
             self.tree_batch.delete(item)
         self.lbl_batch_count.config(text="0 file")
 
     def choose_out_dir(self):
+        """Chọn thư mục xuất kết quả cho chế độ hàng loạt."""
         folder = filedialog.askdirectory()
         if folder:
             self.txt_out_dir.delete(0, tk.END)
             self.txt_out_dir.insert(0, folder)
 
     def _open_out_dir(self):
-        import os, subprocess
+        """Mở thư mục kết quả gần nhất bằng Explorer."""
         out = getattr(self, '_last_out_dir', None) or self.txt_out_dir.get().strip()
         if out and os.path.isdir(out):
             subprocess.Popen(f'explorer "{os.path.normpath(out)}"')
         else:
-            from tkinter import messagebox
             messagebox.showinfo("Th\u00f4ng b\u00e1o", "Th\u01b0 m\u1ee5c xu\u1ea5t ch\u01b0a \u0111\u01b0\u1ee3c ch\u1ecdn ho\u1eb7c kh\u00f4ng t\u1ed3n t\u1ea1i.")
 
     def _stop_batch(self):
+        """Bật cờ dừng để vòng lặp hàng loạt kết thúc sau file hiện tại."""
         self._batch_stop_flag = True
         self.log_batch(">>> \u0110\u00e3 g\u1eedi t\u00edn hi\u1ec7u D\u1eebng. Ch\u1edd file hi\u1ec7n t\u1ea1i ho\u00e0n th\u00e0nh...", tag="err")
 
     def log_batch(self, msg, tag="info"):
+        """Ghi một dòng log vào ô log hàng loạt (kèm tag màu) và cuộn xuống cuối."""
         self.txt_batch_log.insert(tk.END, msg + "\n", tag)
         self.txt_batch_log.see(tk.END)
         self.root.update_idletasks()
 
     def update_batch_status(self, index, status):
+        """Cập nhật trạng thái 1 file trong bảng hàng loạt và đổi màu tag tương ứng."""
         self.batch_files[index]['status'] = status
         items = self.tree_batch.get_children()
         if index >= len(items):
@@ -1122,21 +1326,33 @@ class MainWindow:
         self.tree_batch.item(item, values=(vals[0], vals[1], vals[2], status), tags=(tag,))
         self.root.update_idletasks()
 
-    # \u2500\u2500 Logic ch\u1ea1y h\u00e0ng lo\u1ea1t \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
-
+    # ========================================================================
+    # TAB 2 - HÀNG LOẠT: LOGIC CHẠY & XUẤT KẾT QUẢ
+    # ========================================================================
     def run_batch(self):
-        import os, threading
-        from core.optimizer import run_optimization
-        from io_handlers.file_io import parse_input_file
+        """Chạy tối ưu hàng loạt trên thread nền: với mỗi file, đọc đầu vào, đánh
+        giá bằng MCOC + NSGA-II rồi xuất PNG/Excel/PDF; cuối cùng gộp PDF và tổng kết."""
         from io_handlers.export_utils import export_excel, export_pdf, export_png
 
         if not self.batch_files:
             messagebox.showwarning("C\u1ea3nh b\u00e1o", "Ch\u01b0a c\u00f3 file n\u00e0o trong danh s\u00e1ch.")
             return
 
-        global_out_dir = self.txt_out_dir.get().strip()   # c\u00f3 th\u1ec3 r\u1ed7ng
+        # BẮT BUỘC MCOC — chế độ Hàng loạt cũng đánh giá chính xác như Tab 1,
+        # không chấp nhận phương án xấp xỉ (bệ cứng).
+        exe = self.params['exe_path'].get().strip()
+        if not exe or not os.path.exists(exe):
+            messagebox.showwarning(
+                "C\u1ea7n c\u1ea5u h\u00ecnh MCOC",
+                "Ch\u1ebf \u0111\u1ed9 H\u00e0ng lo\u1ea1t \u0111\u00e1nh gi\u00e1 m\u1ecdi ph\u01b0\u01a1ng \u00e1n b\u1eb1ng MCOC (ch\u00ednh x\u00e1c).\n"
+                "H\u00e3y ch\u1ecdn \u0111\u01b0\u1eddng d\u1eabn MCOC Batch \u1edf Tab 1, m\u1ee5c \"C\u1ea5u h\u00ecnh MCOC (b\u1eaft bu\u1ed9c)\".")
+            return
+
+        global_out_dir = self.txt_out_dir.get().strip()   # có thể rỗng
 
         def task():
+            from core.nsga2_optimizer import run_nsga2
+            from io_handlers.mcoc_writer import self_check
             self._batch_stop_flag = False
             self.btn_run_batch.config(state=tk.DISABLED)
             self.btn_stop_batch.config(state=tk.NORMAL)
@@ -1162,7 +1378,7 @@ class MainWindow:
 
                 filepath = f['path']
                 filename = os.path.basename(filepath)
-                # Th\u01b0 m\u1ee5c xu\u1ea5t: n\u1ebfu \u0111\u1ec3 tr\u1ed1ng th\u00ec l\u00e0 c\u00f9ng th\u01b0 m\u1ee5c file \u0111\u1ea7u v\u00e0o
+                # Thư mục xuất: nếu để trống thì là cùng thư mục file đầu vào
                 out_dir = global_out_dir or os.path.dirname(filepath)
                 last_out_dir = out_dir
 
@@ -1176,39 +1392,64 @@ class MainWindow:
                 try:
                     params, loads, proj_name = parse_input_file(filepath)
 
-                    # \u2500\u2500 S\u1eeda bug: SAFE_D ph\u1ea3i \u0111\u01b0\u1ee3c thi\u1ebft l\u1eadp \u0111\u1ed3ng b\u1ed9 v\u1edbi D_PILE \u2500\u2500\u2500\u2500\u2500\u2500
+                    # ── Sửa bug: SAFE_D phải được thiết lập đồng bộ với D_PILE ──────
                     d_pile = params.get('D_PILE', 1.0)
-                    params['SAFE_D'] = d_pile   # Bu\u1ed9c c\u00e0i \u2014 ph\u00f2ng fallback sai trong optimizer
+                    params['SAFE_D'] = d_pile   # Buộc cài — phòng fallback sai trong optimizer
 
-                    # \u2500\u2500 Ghi \u0111\u00e8 th\u00f4ng s\u1ed1 t\u1eeb Tab 1 n\u1ebfu ng\u01b0\u1eddi d\u00f9ng b\u1eadt t\u00f9y ch\u1ecdn \u2500\u2500\u2500\u2500\u2500
+                    # ── Ghi đè thông số từ Tab 1 nếu người dùng bật tùy chọn ─────
                     if self.var_override_params.get():
-                        params['D_PILE']    = self.params['D_PILE'].get()
-                        params['P_LIMIT']   = self.params['P_LIMIT'].get()
-                        params['P_TENSION'] = self.params['P_TENSION'].get()
-                        params['M_LIMIT']   = self.params['M_LIMIT'].get()
-                        params['SAFE_D']    = self.params['D_PILE'].get()  # c\u1eadp nh\u1eadt l\u1ea1i sau khi ghi \u0111\u00e8
+                        params['D_PILE']    = self._pget('D_PILE')
+                        params['P_LIMIT']   = self._pget('P_LIMIT')
+                        params['P_TENSION'] = self._pget('P_TENSION')
+                        params['M_LIMIT']   = self._pget('M_LIMIT')
+                        params['SAFE_D']    = self._pget('D_PILE')  # cập nhật lại sau khi ghi đè
 
-                    params['mock_mode']       = True
+                    # BẮT BUỘC MCOC — theo luồng chính (Tab 1): đánh giá chính xác
+                    params['exe_path']        = exe
+                    params['input_filepath']  = filepath
+                    params['mock_mode']       = False
                     params['result_filepath'] = filepath
 
-                    # Ki\u1ec3m tra d\u1eef li\u1ec7u \u0111\u1ea7u v\u00e0o t\u1ed1i thi\u1ec3u
+                    # Kiểm tra dữ liệu đầu vào tối thiểu
                     if not loads:
                         raise ValueError("File kh\u00f4ng c\u00f3 t\u1ed5 h\u1ee3p t\u1ea3i tr\u1ecdng n\u00e0o.")
                     if 'L_X' not in params or 'L_Y' not in params:
                         raise ValueError("File thi\u1ebfu k\u00edch th\u01b0\u1edbc b\u1ec7 (L_X, L_Y).")
+                    if not params.get('original_coords'):
+                        raise ValueError("File kh\u00f4ng c\u00f3 t\u1ecda \u0111\u1ed9 c\u1ecdc g\u1ed1c \u0111\u1ec3 l\u00e0m template MCOC.")
+
+                    # Kiểm tra template MCOC khớp với toạ độ gốc
+                    ok_tpl, msg_tpl = self_check(filepath, params['original_coords'])
+                    if not ok_tpl:
+                        raise ValueError("Template MCOC l\u1ed7i: " + msg_tpl)
 
                     self.log_batch(
                         f"  L_X={params['L_X']:.2f}m  L_Y={params['L_Y']:.2f}m  "
                         f"d={params.get('D_PILE',0):.2f}m  Po={params.get('P_LIMIT',0):.0f}T  "
-                        f"Loads={len(loads)}", "info"
+                        f"Loads={len(loads)}  [MCOC chinh xac]", "info"
                     )
 
-                    results   = run_optimization(params, loads)
+                    # Đánh giá bằng MCOC exact + tối ưu NSGA-II (cùng luồng Tab 1)
+                    _blog = lambda m: self.log_batch("    " + m, "info")
+                    evaluator = MCOCBlackbox.make_real_evaluator(params, loads=loads, log=_blog)
+                    orig_coords = np.array(params['original_coords'], dtype=float)
+                    orig_res = evaluator(orig_coords)   # chấm phương án gốc để so sánh
+                    results = run_nsga2(params, loads, evaluator=evaluator,
+                                        pop_size=16, n_gen=10, max_evals=50,
+                                        secondary=self.var_secondary.get(), log=_blog)
+
+                    P_LIMIT = params.get('P_LIMIT', 500.0)
+                    results['original_config'] = {
+                        'type': 'Goc', 'n': len(orig_coords), 'coords': orig_coords,
+                        'pmax': orig_res.get('pmax', 0), 'pmin': orig_res.get('pmin', 0),
+                        'mxmax': orig_res.get('mxmax', 0), 'mymax': orig_res.get('mymax', 0),
+                        'ok': orig_res.get('pmax', 1e9) <= P_LIMIT, 'msg': 'Phuong an goc (MCOC)',
+                    }
                     rec       = results.get('recommended')
                     orig      = results.get('original_config')
                     all_valid = results.get('all_valid_configs', [])
 
-                    # Log ph\u01b0\u01a1ng \u00e1n g\u1ed1c (n\u1ebfu c\u00f3)
+                    # Log phương án gốc (nếu có)
                     if orig:
                         orig_status = "\u0110\u1ea0T" if orig['ok'] else "KH\u00d4NG \u0110\u1ea0T"
                         self.log_batch(
@@ -1217,7 +1458,7 @@ class MainWindow:
                         )
 
                     if rec:
-                        # Xu\u1ea5t file
+                        # Xuất file
                         if not os.path.exists(out_dir):
                             os.makedirs(out_dir)
 
@@ -1247,7 +1488,7 @@ class MainWindow:
                         valid_count = len(all_valid)
                         self.log_batch(
                             f"  -> KHONG DAT  (valid={valid_count})  Ly do: {reason}", "err")
-                        # Log th\u00eam chi ti\u1ebft n\u1ebfu kh\u00f4ng c\u00f3 ph\u01b0\u01a1ng \u00e1n n\u00e0o \u0111\u1ea1t
+                        # Log thêm chi tiết nếu không có phương án nào đạt
                         if valid_count == 0 and results.get('all_candidates'):
                             sample = results['all_candidates'][:3]
                             for c in sample:
@@ -1265,12 +1506,12 @@ class MainWindow:
                     self.update_batch_status(i, "L\u1ed7i")
                     n_err += 1
 
-                # C\u1eadp nh\u1eadt progress
+                # Cập nhật progress
                 done = i + 1
                 self.progress_bar["value"] = done
                 self.lbl_progress.config(text=f"{done}/{len(self.batch_files)} Ho\u00e0n th\u00e0nh")
 
-            # G\u1ed9p PDF
+            # Gộp PDF
             if self.var_merge_pdf.get() and generated_pdfs:
                 try:
                     self.log_batch("\nDang gop file PDF...", "info")
@@ -1286,7 +1527,7 @@ class MainWindow:
                 except Exception as e:
                     self.log_batch(f"Loi gop PDF: {str(e)}", "err")
 
-            # T\u1ed5ng k\u1ebft
+            # Tổng kết
             total = n_ok + n_fail + n_err
             self.log_batch("\n" + "=" * 55, "title")
             self.log_batch(

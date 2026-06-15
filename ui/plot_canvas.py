@@ -1,3 +1,12 @@
+"""
+plot_canvas.py - Vẽ mô phỏng bố trí cọc trên bệ móng bằng matplotlib.
+
+Mục đích: dựng một canvas matplotlib nhúng vào Tkinter (View) để vẽ mặt bằng
+bố trí cọc. `draw_simulation` vẽ: bệ móng, viền giới hạn tâm cọc (R4), các cọc
+tô màu theo lực (heatmap xanh->vàng->đỏ), nhãn lực P từng cọc và colorbar có
+vạch Po.
+"""
+
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
@@ -18,18 +27,33 @@ _COLOR_UPLIFT = '#8e44ad'    # Tím: nhổ vượt giới hạn [Ct]
 
 
 class PlotCanvas:
+    # ========================================================================
+    # Khởi tạo & vòng đời canvas
+    # ========================================================================
     def __init__(self, master):
+        """Khởi tạo figure/axes matplotlib và gắn vào widget Tkinter (master)."""
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
         self.canvas = FigureCanvasTkAgg(self.fig, master=master)
         self.widget = self.canvas.get_tk_widget()
 
+    def clear(self):
+        """Đưa khung vẽ về trạng thái TRỐNG như lúc mới mở (không vẽ bệ/cọc)."""
+        self.fig.clf()
+        self.ax = self.fig.add_subplot(111)
+        self.canvas.draw_idle()
+
+    # ========================================================================
+    # Các thành phần nền (bệ móng, trục, chú thích)
+    # ========================================================================
     def _draw_base(self, L_X, L_Y, SAFE_D):
         """Vẽ bệ móng và giới hạn tâm cọc (R4). Trả về 2 patch để legend."""
+        # Hình chữ nhật bệ móng (canh tâm tại gốc tọa độ)
         rect = patches.Rectangle((-L_X / 2, -L_Y / 2), L_X, L_Y,
                                  linewidth=2, edgecolor='black', facecolor='lightgray',
                                  label='Bệ Móng', zorder=1)
         self.ax.add_patch(rect)
 
+        # Viền giới hạn tâm cọc: thu vào trong bệ một đoạn SAFE_D mỗi cạnh (R4)
         safe_x = max(L_X / 2 - SAFE_D, 0.01)
         safe_y = max(L_Y / 2 - SAFE_D, 0.01)
         safe_rect = patches.Rectangle((-safe_x, -safe_y), 2 * safe_x, 2 * safe_y,
@@ -39,6 +63,7 @@ class PlotCanvas:
 
     def _finalize(self, L_X, L_Y, title=None, has_colorbar=False):
         """Thiết lập trục, lưới, tiêu đề, chú thích chung và vẽ lại canvas."""
+        # Giới hạn trục với lề 1 m quanh bệ, giữ tỉ lệ thật (aspect='equal')
         self.ax.set_xlim(-L_X / 2 - 1, L_X / 2 + 1)
         self.ax.set_ylim(-L_Y / 2 - 1, L_Y / 2 + 1)
         self.ax.set_aspect('equal')
@@ -61,10 +86,16 @@ class PlotCanvas:
         # Dùng draw_idle() để KHÔNG block UI (tránh đơ)
         self.canvas.draw_idle()
 
+    # ========================================================================
+    # Vẽ mô phỏng bố trí cọc
+    # ========================================================================
     def draw_simulation(self, coords, params, forces=None, m_forces=None):
+        """Vẽ mặt bằng bố trí cọc; tô màu theo lực P nếu có nội lực kèm theo."""
+        # Xóa nội dung cũ, tạo lại axes sạch cho lần vẽ mới
         self.fig.clf()
         self.ax = self.fig.add_subplot(111)
 
+        # Đọc thông số bệ/cọc/giới hạn từ params (có giá trị mặc định)
         L_X = params.get('L_X', 6.0)
         L_Y = params.get('L_Y', 9.0)
         d = params.get('D_PILE', 1.0)
@@ -72,8 +103,10 @@ class PlotCanvas:
         P_LIMIT = params.get('P_LIMIT', 500.0)
         P_TENSION = params.get('P_TENSION', 0.0)
         M_LIMIT_raw = params.get('M_LIMIT', 0.0)
+        # Không khai báo [M] (<=0) ⇒ coi như vô cực để bỏ qua kiểm momen
         M_LIMIT = float('inf') if (M_LIMIT_raw is None or M_LIMIT_raw <= 0) else M_LIMIT_raw
 
+        # Bước 1: vẽ nền (bệ móng + viền giới hạn tâm cọc)
         self._draw_base(L_X, L_Y, SAFE_D)
 
         # Không có cọc → chỉ vẽ bệ trống
@@ -83,11 +116,13 @@ class PlotCanvas:
 
         coords_arr = np.array(coords, dtype=float)
         n_piles = len(coords_arr)
+        # Chỉ tô màu theo lực khi số phần tử forces khớp số cọc
         has_forces = (forces is not None and len(forces) == n_piles)
 
         if not has_forces:
             # Chưa có nội lực → vẽ cọc xanh lá đơn giản
             for i, (x, y) in enumerate(coords_arr):
+                # Mỗi cọc là một vòng tròn bán kính d/2 kèm số thứ tự
                 circle = patches.Circle((x, y), d / 2, edgecolor='#1a6300', facecolor='#4caf50',
                                         alpha=0.85, zorder=3)
                 self.ax.add_patch(circle)
@@ -98,6 +133,7 @@ class PlotCanvas:
 
         # ── Có nội lực: vẽ heatmap ───────────────────────────────────────────
         forces_arr = np.array(forces, dtype=float)
+        # Momen lớn nhất toàn bệ và cờ vượt giới hạn [M]
         max_m = max(m_forces[0], m_forces[1]) if m_forces else 0.0
         is_m_over_global = max_m > M_LIMIT
 
@@ -108,9 +144,11 @@ class PlotCanvas:
         n_over = 0   # số cọc vượt nén
         n_pull = 0   # số cọc nhổ vượt giới hạn
 
+        # Bước 2: duyệt từng cọc, chọn màu theo trạng thái lực rồi vẽ
         for i, (x, y) in enumerate(coords_arr):
             p = float(forces_arr[i])
 
+            # Phân loại trạng thái: vượt nén (hoặc vượt momen) / nhổ vượt [Ct]
             is_over = p > (P_LIMIT + 1e-4) or is_m_over_global
             is_pull = P_TENSION > 0 and p < -P_TENSION
 
@@ -129,6 +167,7 @@ class PlotCanvas:
             if p > (P_LIMIT + 1e-4):
                 n_over += 1
 
+            # Viền đỏ & nét dày để nhấn mạnh cọc vi phạm
             edge_color = 'red' if (is_over or is_pull) else 'black'
             lw = 2.5 if (is_over or is_pull) else 1
 
@@ -142,6 +181,7 @@ class PlotCanvas:
 
             # Nhãn lực cọc P
             label_p = f"P={p:.1f}T"
+            # Màu nhãn P theo trạng thái: đỏ (vượt nén) / tím (nhổ) / xanh navy
             if p > (P_LIMIT + 1e-4):
                 p_clr, p_weight = 'red', 'bold'
             elif is_pull:
@@ -152,7 +192,7 @@ class PlotCanvas:
                          fontsize=7.5, color=p_clr, fontweight=p_weight,
                          bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1), zorder=4)
 
-        # Nhãn Mmax toàn bệ (góc dưới phải)
+        # Bước 3: nhãn Mmax toàn bệ (góc dưới phải)
         if m_forces and max_m > 0:
             self.ax.text(0.98, 0.02, f"Max Momen = {max_m:.1f} T.m",
                          transform=self.ax.transAxes, ha='right', va='bottom',
@@ -160,7 +200,7 @@ class PlotCanvas:
                          fontweight='bold',
                          bbox=dict(facecolor='white', alpha=0.8, edgecolor='gray'), zorder=5)
 
-        # Colorbar dùng chung thang màu với mặt cọc
+        # Bước 4: colorbar dùng chung thang màu với mặt cọc
         sm = ScalarMappable(cmap=_PILE_CMAP, norm=norm)
         sm.set_array([])
         cbar = self.fig.colorbar(sm, ax=self.ax, orientation='vertical', fraction=0.04, pad=0.02)
@@ -169,9 +209,10 @@ class PlotCanvas:
                         color='red', linewidth=2, linestyle='--')
         cbar.set_label(f'Lực cọc P (T)\n── Giới hạn Po={P_LIMIT:.0f} T', fontsize=8)
 
-        # Tiêu đề tổng hợp trạng thái
+        # Bước 5: tiêu đề tổng hợp trạng thái
         pmax = float(np.max(forces_arr))
         pmin = float(np.min(forces_arr))
+        # ĐẠT khi không có cọc vượt nén, không cọc nhổ và không vượt momen
         is_ok = (n_over == 0 and n_pull == 0 and not is_m_over_global)
         status = "ĐẠT" if is_ok else "KHÔNG ĐẠT"
         title = (f"{n_piles} cọc  |  Pmax={pmax:.1f}T / Pmin={pmin:.1f}T  |  {status}")
@@ -180,4 +221,5 @@ class PlotCanvas:
         if n_pull:
             title += f"  ({n_pull} cọc nhổ)"
 
+        # Bước 6: hoàn thiện trục/lưới/chú thích và vẽ lại canvas
         self._finalize(L_X, L_Y, title=title, has_colorbar=True)
