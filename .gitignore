@@ -13,4 +13,11 @@ Mcoc_test/
 packaging/build/
 packaging/dist/
 packaging/*.exe
+packaging/*.zip
+
+# Tài liệu XUẤT RA & file CHUYỂN ĐỔI — chỉ lưu LOCAL, KHÔNG đẩy lên git.
+# Chỉ commit FILE KỸ THUẬT (mã nguồn .py, tài liệu nguồn .md, script đóng gói).
+# PDF đã bị bỏ qua bởi "*.pdf" ở trên; thêm các file trung gian khi chuyển đổi:
+*_tmp.html        # HTML tạm do packaging/md_to_pdf.py sinh ra
+_*.png            # ảnh tạm khi rasterize PDF để kiểm tra
 

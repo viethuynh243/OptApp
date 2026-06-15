@@ -192,7 +192,8 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     # Phụ lục giới hạn mô hình
     L.append("---\n")
     L.append("## PHU LUC — PHAM VI & GIOI HAN MO HINH\n")
-    L.append("- Luc doc truc: `P_i = N/n + Mx*(y_i-cy)/Ix + My*(x_i-cx)/Iy` (be cung).")
+    L.append("- Luc doc truc (be cung, doi momen ve trong tam nhom coc): "
+             "`P_i = N/n + (Mx - N*cy)*(y_i-cy)/Ix + (My - N*cx)*(x_i-cx)/Iy`.")
     if ENABLE_LATERAL_CHECK:
         L.append("- Luc ngang H_max phan phoi tu Hx, Hy, Mz (tinh hoc, coc dung do cung deu); "
                  "**momen than coc do tai ngang** can phan tich p-y rieng khi dang ke.")

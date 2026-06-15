@@ -6,7 +6,8 @@ MUC DICH
       (1) PHUONG PHAP GOC (MCOC) : ket qua phan tu huu han khong gian (FEM) thuc,
           doc truc tiep tu cac file *_result.txt -> Nmax/Nmin (ground truth).
       (2) PHUONG PHAP HOP DEN     : cong thuc be cung giai tich ma chuong trinh chay
-          Pi = N/n + Mx*yi/Ix + My*xi/Iy  (toc do < 1 ms).
+          Pi = N/n + (Mx-N*cy)*(yi-cy)/Ix + (My-N*cx)*(xi-cx)/Iy  (doi momen ve
+          trong tam nhom coc; toc do < 1 ms).
 
     Voi MOI ho so, ca 2 phuong phap duoc tinh tren CUNG toa do coc va CUNG to hop
     tai trong, nen sai so phan anh dung chenh lech giua 2 mo hinh co hoc.

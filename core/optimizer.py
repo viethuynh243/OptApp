@@ -54,28 +54,38 @@ def run_optimization(params, loads):
                 sx_max = min(s_max, (L_X - 2*SAFE_D)/(nx-1) if nx > 1 else 0)
                 sy_max = min(s_max, (L_Y - 2*SAFE_D)/(ny-1) if ny > 1 else 0)
 
-                # Lọc sớm R3 (khoảng cách tim-tim >= 3d):
-                # - Kiểu A: hai cọc gần nhất cách nhau sx hoặc sy.
-                # - Kiểu B (so le): hàng kề nhau lệch sx/2 nên khoảng cách gần
-                #   nhất là đường chéo sqrt((sx/2)^2 + sy^2), KHÔNG phải sy.
+                # Chốt bước lưới (sx, sy) sao cho thỏa ràng buộc khoảng cách R3:
+                # - Kiểu A: cọc gần nhất cách sx hoặc sy -> đều phải trong [3d, 6d].
+                # - Kiểu B (so le): hàng kề nhau lệch sx/2 nên khoảng cách gần nhất
+                #   là ĐƯỜNG CHÉO sqrt((sx/2)^2 + sy^2), KHÔNG phải sy. Ở bước lớn
+                #   nhất đường chéo thường vượt 6d, nên GIẢM sy để kéo đường chéo
+                #   về đúng 6d (vẫn giữ sy lớn nhất có thể -> mômen quán tính lớn).
                 if layout_type == "A":
                     if sx_max < s_min or sy_max < s_min:
                         continue
+                    sx, sy = sx_max, sy_max
                 else:
-                    diag_max = np.sqrt((sx_max / 2.0)**2 + sy_max**2)
-                    if sx_max < s_min or diag_max < s_min:
+                    sx = sx_max
+                    if sx < s_min:
+                        continue
+                    # sy lớn nhất sao cho đường chéo <= 6d, và không vượt mép bệ
+                    sy_diag_cap = np.sqrt(max(s_max**2 - (sx / 2.0)**2, 0.0))
+                    sy = min(sy_max, sy_diag_cap)
+                    diag = np.sqrt((sx / 2.0)**2 + sy**2)
+                    # Đường chéo phải >= 3d; nếu mép bệ ép sy quá nhỏ thì loại.
+                    if sy <= 0 or diag < s_min - 1e-9:
                         continue
 
                 # Sinh tọa độ ứng viên rồi gọi mechanics kiểm tra ràng buộc
-                coords = generate_coords(nx, ny, sx_max, sy_max, layout_type)
+                coords = generate_coords(nx, ny, sx, sy, layout_type)
                 n = len(coords)
 
-                ok, pmax, pmin, mxmax, mymax, forces, msg = check_layout(coords, nx, ny, sx_max, sy_max, layout_type, params, loads)
+                ok, pmax, pmin, mxmax, mymax, forces, msg = check_layout(coords, nx, ny, sx, sy, layout_type, params, loads)
 
                 candidate = {
                     'type': layout_type,
                     'nx': nx, 'ny': ny,
-                    'sx': sx_max, 'sy': sy_max,
+                    'sx': sx, 'sy': sy,
                     'n': n,
                     'coords': coords,
                     'pmax': pmax,
@@ -174,6 +184,14 @@ def run_optimization(params, loads):
             clean_msg = msg.replace("Khong dat: ", "")
             reason = f"Phuong an goc KHONG DAT ({clean_msg}). Can thay doi cau hinh dai coc, mong coc hoac gioi han uon."
 
+    # Cảnh báo độ tin cậy R6 ở chế độ mock: mômen đầu cọc là ước lượng heuristic.
+    warning = None
+    m_limit = params.get('M_LIMIT', 0) or 0
+    is_mock = params.get('mock_mode', True) or not params.get('exe_path')
+    if is_mock and m_limit > 0:
+        warning = ("Momen dau coc o che do mock la UOC LUONG (heuristic ~ 1/so coc); "
+                   "ket qua kiem tra [M] (R6) chi tin cay khi cham bang MCOC.")
+
     return {
         'best_A': best_configs['A'],
         'best_B': best_configs['B'],
@@ -181,5 +199,6 @@ def run_optimization(params, loads):
         'reason': reason,
         'all_valid_configs': all_valid_configs,
         'all_candidates': all_candidates,
-        'original_config': original_config
+        'original_config': original_config,
+        'warning': warning,
     }

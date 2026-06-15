@@ -379,6 +379,10 @@ def run_nsga2(params, loads, evaluator=None, pop_size=40, n_gen=30,
     else:
         eval_mode = 'MCOC-exact'
     log("NSGA-II | pop=%d, gen=%d, danh gia=%s" % (pop_size, n_gen, eval_mode))
+    # Mômen đầu cọc ở mock là ước lượng -> R6 chỉ tin cậy khi chấm MCOC.
+    if eval_mode == 'mock' and (params.get('M_LIMIT', 0) or 0) > 0:
+        log("CANH BAO: che do mock - momen dau coc la uoc luong; kiem tra [M] "
+            "(R6) chi tin cay khi danh gia bang MCOC.")
 
     cache = {}
     counters = {'n_evals': 0}

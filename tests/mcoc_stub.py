@@ -99,8 +99,10 @@ def main():
     pos_min = (1, 1)
     for li, (hx, hy, N, mx, my, mz) in enumerate(loads, 1):
         for pi, (x, y) in enumerate(coords, 1):
-            # Lực dọc đầu cọc theo công thức bệ cứng (N/n + uốn quanh 2 trục) nhân hệ số FEM
-            p = (N / n + mx * (y - cy) / Ix + my * (x - cx) / Iy) * FEM_FACTOR
+            # Lực dọc đầu cọc theo công thức bệ cứng, DỜI mômen về trọng tâm nhóm
+            # cọc (mx - N*cy, my - N*cx) để cân bằng khi tâm lệch, nhân hệ số FEM.
+            p = (N / n + (mx - N * cy) * (y - cy) / Ix
+                 + (my - N * cx) * (x - cx) / Iy) * FEM_FACTOR
             if p > pmax:
                 pmax, pos_max = p, (pi, li)
             if p < pmin:

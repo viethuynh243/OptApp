@@ -229,6 +229,9 @@ if __name__ == "__main__":
     print_recommendation(results.get('recommended'), results.get('reason', ''))
     print_pile_forces(results.get('recommended'))
 
+    if results.get('warning'):
+        print(f"\n  [CANH BAO] {results['warning']}")
+
     print(f"\n  [Time] Thoi gian tinh toan: {elapsed*1000:.1f} ms")
     print(LINE + "\n")
 
