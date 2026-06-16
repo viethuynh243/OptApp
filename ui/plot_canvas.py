@@ -223,3 +223,124 @@ class PlotCanvas:
 
         # Bước 6: hoàn thiện trục/lưới/chú thích và vẽ lại canvas
         self._finalize(L_X, L_Y, title=title, has_colorbar=True)
+
+    # ========================================================================
+    # Vẽ bảng kiểm toán ràng buộc (chuẩn tư vấn thiết kế)
+    # ========================================================================
+    def draw_constraint_view(self, data):
+        """Vẽ BẢNG KIỂM TRA ĐIỀU KIỆN R1–R6 theo từng tổ hợp tải trọng.
+
+        Phản chiếu Mục 5–6 của báo cáo kỹ thuật (report_writer) để màn hình và
+        bản thuyết minh kể cùng một câu chuyện:
+          - Hàng = tổ hợp tải trọng; cột nội lực N_max/N_min và cột R1 (nén),
+            R2 (nhổ — chỉ khi khai báo [Ct]).
+          - Mỗi ô ràng buộc tô màu theo TỶ LỆ HUY ĐỘNG (giá trị/giới hạn):
+            xanh = an toàn → đỏ = sát/vượt 1.0.
+          - Tổ hợp CHI PHỐI được tô viền đỏ đậm.
+          - Hình học R3/R4 và uốn R5/R6 (không đổi theo tổ hợp) tổng hợp ở dưới.
+        `data` lấy từ MainWindow._build_constraint_data.
+        """
+        self.fig.clf()
+        ax = self.ax = self.fig.add_subplot(111)
+        ax.axis('off')
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+
+        rows = data.get('rows', [])
+        show_r2 = (data.get('Ct', 0) or 0) > 0
+
+        # Tiêu đề tổng hợp: mục tiêu (số cọc) + hệ số sử dụng + tổ hợp chi phối
+        title = (f"BẢNG KIỂM TRA ĐIỀU KIỆN R1–R6  —  {data['n_piles']} cọc  |  "
+                 f"hệ số sử dụng max = {data['util_max']:.3f}"
+                 + (f" (TH{data['governing']} chi phối)" if data['governing'] else "")
+                 + f"  |  {data['status']}")
+        tcol = 'navy' if data['status'] == 'ĐẠT' else '#b03a2e'
+        ax.set_title(title, fontsize=9.5, fontweight='bold', color=tcol, pad=8)
+
+        if not rows:
+            ax.text(0.5, 0.5, "Chưa có dữ liệu tổ hợp tải trọng để kiểm toán.",
+                    ha='center', va='center', fontsize=11, color='gray')
+            self.fig.tight_layout()
+            self.canvas.draw_idle()
+            return
+
+        # Cấu trúc cột (R2 chỉ hiện khi có [Ct])
+        headers = ['TH', 'N_max (T)', 'N_min (T)', 'R1 nén\nN_max/[Po]']
+        if show_r2:
+            headers.append('R2 nhổ\n|N_min|/[Ct]')
+        ncol = len(headers)
+        col_x = np.linspace(0.0, 1.0, ncol + 1)
+
+        # Vùng bảng: chừa chỗ tiêu đề (trên) và phần tổng hợp hình học (dưới)
+        top, bottom = 0.97, 0.30
+        nrow = len(rows) + 1                      # + dòng tiêu đề
+        row_h = (top - bottom) / nrow
+
+        # Màu nhị phân theo TRẠNG THÁI (chuẩn tư vấn): xanh = ĐẠT, đỏ = KHÔNG ĐẠT.
+        # Con số tỷ lệ huy động vẫn in trong ô để thấy mức độ; màu chỉ báo đạt/không.
+        C_PASS, C_FAIL = '#27ae60', '#c0392b'
+
+        def cell_color(r):
+            if r is None:
+                return '#e8e8e8'
+            return C_FAIL if r > 1.0 + 1e-9 else C_PASS
+
+        # Dòng tiêu đề bảng
+        yhdr = top - row_h
+        for c in range(ncol):
+            ax.add_patch(patches.Rectangle((col_x[c], yhdr), col_x[c + 1] - col_x[c], row_h,
+                                           facecolor='#34495e', edgecolor='white', lw=1, zorder=1))
+            ax.text((col_x[c] + col_x[c + 1]) / 2, yhdr + row_h / 2, headers[c],
+                    ha='center', va='center', color='white', fontsize=7.5, fontweight='bold', zorder=2)
+
+        # Các dòng tổ hợp
+        for ri, rec in enumerate(rows):
+            y = top - row_h * (ri + 2)
+            is_gov = (rec['th'] == data['governing'])
+
+            vals = [str(rec['th']), f"{rec['nmax']:.1f}", f"{rec['nmin']:.1f}",
+                    (f"{rec['r1']:.2f}" if rec['r1'] is not None else '-')]
+            ratios = [None, None, None, rec['r1']]
+            if show_r2:
+                vals.append(f"{rec['r2']:.2f}" if rec['r2'] is not None else '-')
+                ratios.append(rec['r2'])
+
+            for c in range(ncol):
+                ratio = ratios[c]
+                if c >= 3 and ratio is not None:
+                    fc = cell_color(ratio)
+                    tc = 'white'
+                else:
+                    fc = '#fbfcfd' if (ri % 2 == 0) else '#eef1f4'
+                    tc = 'black'
+                ax.add_patch(patches.Rectangle((col_x[c], y), col_x[c + 1] - col_x[c], row_h,
+                                               facecolor=fc, edgecolor='#cfd6dd', lw=0.6, zorder=1))
+                ax.text((col_x[c] + col_x[c + 1]) / 2, y + row_h / 2, vals[c],
+                        ha='center', va='center', color=tc, fontsize=7.5,
+                        fontweight='bold' if (is_gov or c >= 3) else 'normal', zorder=2)
+
+            # Nhấn mạnh tổ hợp chi phối
+            if is_gov:
+                ax.add_patch(patches.Rectangle((col_x[0], y), 1.0, row_h, fill=False,
+                                               edgecolor='#c0392b', lw=2.0, zorder=3))
+
+        # Ghi chú ý nghĩa con số trong ô
+        ax.text(0.0, bottom - 0.012,
+                "Số trong ô R1/R2 = tỷ lệ huy động (giá trị / giới hạn cho phép).",
+                ha='left', va='top', fontsize=7.5, color='#555')
+
+        # Chú thích màu (legend): ô màu + nhãn trạng thái
+        ly, sw, sh = bottom - 0.055, 0.020, 0.030
+        ax.add_patch(patches.Rectangle((0.0, ly), sw, sh, facecolor=C_PASS, edgecolor='none'))
+        ax.text(0.028, ly + sh / 2, "ĐẠT (tỷ lệ ≤ 1.0)", ha='left', va='center', fontsize=7.5, color='#333')
+        ax.add_patch(patches.Rectangle((0.30, ly), sw, sh, facecolor=C_FAIL, edgecolor='none'))
+        ax.text(0.328, ly + sh / 2, "KHÔNG ĐẠT (vượt giới hạn)", ha='left', va='center', fontsize=7.5, color='#333')
+        ax.add_patch(patches.Rectangle((0.68, ly), sw, sh, fill=False, edgecolor='#c0392b', lw=2.0))
+        ax.text(0.708, ly + sh / 2, "tổ hợp chi phối", ha='left', va='center', fontsize=7.5, color='#333')
+
+        # Tổng hợp hình học R3/R4 + uốn R5/R6 (không đổi theo tổ hợp)
+        ax.text(0.0, bottom - 0.115, "   |   ".join(data.get('geom_summary', [])),
+                ha='left', va='top', fontsize=8, color='#222', fontweight='bold')
+
+        self.fig.tight_layout()
+        self.canvas.draw_idle()

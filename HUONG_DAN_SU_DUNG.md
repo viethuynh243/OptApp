@@ -7,9 +7,12 @@
 
 ## 1. OptApp làm gì?
 
-OptApp tự động tìm **phương án bố trí cọc ít cọc nhất** mà vẫn đạt mọi điều kiện
-kỹ thuật (sức chịu nén/nhổ, khoảng cách cọc, cọc nằm trong bệ…). Mỗi phương án
-được **chấm bằng phần mềm MCOC** (chính xác), nên kết quả dùng được cho hồ sơ.
+OptApp tự động tìm **phương án ít cọc nhất** mà vẫn đạt mọi điều kiện kỹ thuật
+(sức chịu nén/nhổ, khoảng cách cọc, cọc nằm trong bệ móng…). Mỗi phương án được
+**chấm bằng phần mềm MCOC** (chính xác), nên kết quả dùng được cho hồ sơ.
+
+> *Thuật ngữ:* trong tài liệu này "bệ" = **đài cọc** (pile cap) theo TCVN 10304:2014,
+> dùng theo quy ước công trình cầu.
 
 Tổng quan các bước sử dụng:
 
@@ -28,7 +31,7 @@ flowchart LR
 
 ### Cách 1 — Dùng bộ cài (khuyến nghị)
 
-1. Chạy **`OptApp_Setup_1.0.0.exe`**.
+1. Chạy **`OptApp_Setup_1.1.0.exe`**.
 2. Làm theo trình cài đặt (chọn thư mục, tạo shortcut Desktop nếu muốn).
 3. Mở **OptApp** từ Start Menu hoặc Desktop.
 
@@ -83,6 +86,7 @@ Có 2 cách:
 
 > 🔎 **Đơn vị (theo MCOC):** lực = **Tấn (T)**, momen = **T.m** — áp dụng cho cả
 > tải trọng lẫn [Po]/[Ct]/[M]. Bắt buộc Lx, Ly, d, [Po] đều > 0.
+> Theo TCVN 10304:2014, [Po] và [Ct] là sức chịu tải trọng **nén** (Rc,d) và **kéo/nhổ** (Rt,d) của cọc.
 
 ### Bước 3 — Tổ hợp Tải trọng
 
@@ -106,15 +110,20 @@ Mỗi dòng là một tổ hợp: **Hx, Hy** (lực ngang), **P** (lực đứng
 
 ### Bước 6 — Chạy
 
-Bấm nút lớn **▶ CHẠY TỐI ƯU HÓA**. App chạy MCOC ở chế độ nền (có log tiến trình
-ở khung *Kết quả Đánh giá*); chờ một lát tuỳ số phương án.
+Bấm nút lớn **▶ CHẠY TỐI ƯU HÓA**. App chạy MCOC ở chế độ nền (log tiến trình
+ở khung *Kết quả Đánh giá*); chờ một lát tùy số phương án.
 
 ### Bước 7 — Đọc kết quả & xem mặt bằng
 
 - Khung **Kết quả Đánh giá** (trái): phương án kiến nghị, số cọc, Pmax/Pmin, lý do chọn.
-- Bên phải: chọn **Phương án** và **Tổ hợp** ở 2 ô combobox để xem **mặt bằng cọc**
-  tô màu nhiệt theo mức tải:
-  - 🟢 thấp (an toàn) · 🟡 gần giới hạn · 🔴 vượt [Po] · 🟣 nhổ vượt [Ct].
+- Bên phải: chọn **Phương án** và **Tổ hợp** ở 2 ô combobox; **dải KPI** phía trên luôn hiện
+  `Số cọc | Hệ số sử dụng lớn nhất (THx chi phối) | Trạng thái`.
+- Panel phải có **2 chế độ hiển thị** (nút radio):
+  - **Mặt bằng**: sơ đồ bố trí cọc tô màu nhiệt theo mức tải —
+    🟢 thấp (an toàn) · 🟡 gần giới hạn · 🔴 vượt [Po] · 🟣 nhổ vượt [Ct].
+  - **Kiểm tra điều kiện R1–R6**: bảng kiểm tra theo **từng tổ hợp tải** (R1 nén, R2 nhổ),
+    tô màu ĐẠT (xanh) / KHÔNG ĐẠT (đỏ), **tổ hợp chi phối viền đỏ**, kèm tổng hợp hình học
+    R3/R4 và uốn R5/R6 ở chân bảng.
 
 ### Bước 8 — Xuất kết quả
 
@@ -124,6 +133,7 @@ Bấm **Xuất kết quả**, chọn nơi lưu. App tạo:
 | ------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `*.txt`                                                     | Kết quả định dạng MCOC (tọa độ cọc, nội lực)                   |
 | `*_baocao_kythuat.md`                                       | Báo cáo kỹ thuật: hệ số sử dụng, tổ hợp chi phối, bảng R1–R6 |
+| `*_baocao_kythuat.pdf`                                      | Bản PDF của báo cáo kỹ thuật (cùng nội dung, font tiếng Việt) |
 | `*_De_xuat.png` (hoặc nhiều ảnh nếu chọn “tất cả”) | Ảnh mặt bằng bố trí cọc                                             |
 
 > *Làm mới* để xoá số liệu/kết quả và bắt đầu lại.
@@ -169,12 +179,12 @@ python run_demo.py         REM Demo quét nhanh bằng bệ cứng (không cần
 
 ## 8. Mẹo dùng hiệu quả
 
-- Luôn để **đơn vị Tấn (T)** cho cả tải trọng và sức chịu tải — nhầm kN sẽ ra sai số lớn.
+- Luôn để **đơn vị Tấn (T)** cho cả tải trọng và sức chịu tải — nhầm kN sẽ sai số lớn.
 - Bắt đầu với ưu tiên **Tiết kiệm (bệ gọn)**; nếu lo lực đầu cọc cao thì đổi sang
-  **An toàn (giảm Pmax)** và chạy lại.
+  **An toàn (giảm Pmax)** rồi chạy lại.
 - Muốn báo cáo đầy đủ để thẩm tra: chọn xuất và mở file `*_baocao_kythuat.md`.
 - Với nhiều mố/trụ: dùng **Tab Hàng loạt** để xuất đồng loạt PDF/Excel/PNG.
 
 ---
 
-*Phiên bản OptApp 1.0.0 — cập nhật 2026-06-15.*
+*Phiên bản OptApp 1.1.0 — cập nhật 2026-06-16.*

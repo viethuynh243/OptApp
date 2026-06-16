@@ -25,12 +25,13 @@ from tkinter import ttk, messagebox, filedialog
 from tkinterdnd2 import DND_FILES
 
 from core import rigid_cap
+from core.version import WINDOW_TITLE
 from core.refine_optimizer import run_refinement, run_pareto_refinement
 from core.blackbox import MCOCBlackbox
 from core.mechanics import check_layout
 from core.generator import generate_coords
 from io_handlers.file_io import parse_input_file, export_output_file
-from io_handlers.report_writer import export_technical_report
+from io_handlers.report_writer import export_technical_report, export_technical_report_pdf
 from ui.plot_canvas import PlotCanvas
 
 
@@ -69,7 +70,7 @@ class MainWindow:
     def __init__(self, root):
         """Khởi tạo cửa sổ: tạo biến trạng thái, dựng UI, đăng ký kéo-thả file."""
         self.root = root
-        self.root.title("Tối Ưu Hóa Bố Trí Cọc Móng Cầu")
+        self.root.title(WINDOW_TITLE)
         self.root.geometry("1100x750")
 
         # Biến hệ thống — thông số bài toán để TRỐNG khi mở (người dùng tự nhập
@@ -259,9 +260,31 @@ class MainWindow:
         self.cb_config.bind("<<ComboboxSelected>>", self.update_simulation)
 
         tk.Label(frame_sim, text="Tổ hợp:", bg="white").pack(side=tk.LEFT, padx=5)
-        self.cb_load_case = ttk.Combobox(frame_sim, state="readonly", width=15)
+        self.cb_load_case = ttk.Combobox(frame_sim, state="readonly", width=12)
         self.cb_load_case.pack(side=tk.LEFT, padx=5)
         self.cb_load_case.bind("<<ComboboxSelected>>", self.update_simulation)
+
+        # Chế độ hiển thị: Mặt bằng bố trí ⇄ Bảng kiểm tra điều kiện R1–R6 (chuẩn tư vấn)
+        self.view_mode = tk.StringVar(value="layout")
+        ttk.Radiobutton(frame_sim, text="Mặt bằng", variable=self.view_mode,
+                        value="layout", command=self.update_simulation).pack(side=tk.LEFT, padx=(12, 2))
+        ttk.Radiobutton(frame_sim, text="Kiểm tra điều kiện R1–R6", variable=self.view_mode,
+                        value="audit", command=self.update_simulation).pack(side=tk.LEFT, padx=2)
+
+        # Dải KPI: mục tiêu (số cọc) + hệ số sử dụng max + tổ hợp chi phối — luôn hiện
+        self.lbl_kpi = tk.Label(right_frame, text="", bg="#eef3f8", fg="#1a3c5e",
+                                font=("Arial", 10, "bold"), anchor="w", padx=8, pady=4)
+        self.lbl_kpi.pack(side=tk.TOP, fill=tk.X, padx=2)
+
+        # Ghi chú phạm vi & giới hạn mô hình (bắt buộc theo chuẩn tư vấn thiết kế)
+        self.lbl_scope = tk.Label(
+            right_frame,
+            text=("Phạm vi mô hình: bệ cứng — chỉ phân phối lực dọc trục; CHƯA xét "
+                  "Hx/Hy/Mz, hiệu ứng nhóm cọc, độ lún, kết cấu bệ. Dùng cho bố trí "
+                  "sơ bộ/tối ưu số cọc; thiết kế chi tiết phải chạy MCOC/FEM đầy đủ."),
+            bg="white", fg="#888", font=("Arial", 8), anchor="w",
+            justify="left", wraplength=720)
+        self.lbl_scope.pack(side=tk.BOTTOM, fill=tk.X, padx=4, pady=(0, 2))
 
         self.plot_canvas = PlotCanvas(right_frame)
         self.plot_canvas.widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
@@ -622,7 +645,7 @@ class MainWindow:
                 self.output_option.get()
             )
 
-            # 1b. Xuất BÁO CÁO KỸ THUẬT chuẩn (.md) — hệ số sử dụng, R1-R8, phụ lục
+            # 1b. Xuất BÁO CÁO KỸ THUẬT chuẩn (.md) — hệ số sử dụng, R1-R6, phụ lục
             report_path = os.path.join(base_dir, f"{base_name}_baocao_kythuat.md")
             try:
                 export_technical_report(
@@ -630,6 +653,15 @@ class MainWindow:
                     self.loads, getattr(self, 'project_name', 'Du An Toi Uu Coc'))
             except Exception:
                 report_path = None
+
+            # 1c. Xuất BÁO CÁO KỸ THUẬT dạng PDF (cùng nội dung, có bảng R1-R6, font Việt)
+            pdf_report_path = os.path.join(base_dir, f"{base_name}_baocao_kythuat.pdf")
+            try:
+                export_technical_report_pdf(
+                    pdf_report_path, self.current_config, self.get_params_dict(),
+                    self.loads, getattr(self, 'project_name', 'Du An Toi Uu Coc'))
+            except Exception:
+                pdf_report_path = None
 
             # 2. Xuất ảnh mặt bằng PNG
             exported_imgs = []
@@ -652,10 +684,11 @@ class MainWindow:
                 self.plot_canvas.fig.savefig(img_path, dpi=300, bbox_inches='tight')
                 exported_imgs.append(img_path)
 
+            extra = [p for p in (report_path, pdf_report_path) if p]
             messagebox.showinfo(
                 "Thành công",
                 f"Đã xuất:\n• {os.path.basename(filepath)}\n"
-                + "\n".join(f"• {os.path.basename(p)}" for p in exported_imgs)
+                + "\n".join(f"• {os.path.basename(p)}" for p in extra + exported_imgs)
             )
         except Exception as e:
             import traceback
@@ -1003,7 +1036,89 @@ class MainWindow:
         mxmax = selected_cfg.get('mxmax', 0)
         mymax = selected_cfg.get('mymax', 0)
 
-        self.plot_canvas.draw_simulation(coords, self.get_params_dict(), forces, m_forces=(mxmax, mymax))
+        # Số liệu kiểm tra điều kiện R1–R6 theo từng tổ hợp (chuẩn tư vấn) + cập nhật KPI.
+        # Tính luôn cho cả 2 chế độ để dải KPI nhất quán dù đang xem mặt bằng.
+        cdata = self._build_constraint_data(selected_cfg, coords, params_dict, calibration_factor)
+        self._update_kpi(cdata)
+
+        if self.view_mode.get() == "audit":
+            self.plot_canvas.draw_constraint_view(cdata)
+        else:
+            self.plot_canvas.draw_simulation(coords, params_dict, forces, m_forces=(mxmax, mymax))
+
+    # ── Kiểm tra điều kiện R1–R6 (chuẩn tư vấn) ──────────────────────────
+    def _build_constraint_data(self, cfg, coords, params, calib):
+        """Tổng hợp số liệu kiểm tra điều kiện R1–R6 theo từng tổ hợp cho phương án đang xem.
+
+        Phản chiếu Mục 5–6 của báo cáo kỹ thuật (report_writer) để bản vẽ trên
+        màn hình và bản thuyết minh nhất quán: nội lực N_max/N_min từng tổ hợp
+        (mô hình bệ cứng × hệ số khớp MCOC), tỷ lệ huy động R1/R2, tổ hợp chi
+        phối, và tổng hợp hình học R3/R4 + uốn R5/R6.
+        """
+        Po = params.get('P_LIMIT', 0) or 0
+        Ct = params.get('P_TENSION', 0) or 0
+        Mlim = params.get('M_LIMIT', 0) or 0
+        d = params.get('D_PILE', 1.0) or 1.0
+        c_min = params.get('SAFE_D', d)            # R4: tim cọc cách mép ≥ d
+
+        # R1/R2 theo từng tổ hợp + tổ hợp chi phối (N_max lớn nhất)
+        rows = []
+        gov_i, gov_nmax = 0, -1e18
+        if self.loads:
+            P = rigid_cap.forces_all_loads(np.asarray(coords, float), self.loads)
+            for i in range(len(self.loads)):
+                nmax = float(P[i].max()) * calib
+                nmin = float(P[i].min()) * calib
+                r1 = (nmax / Po) if Po > 0 else None
+                # R2 nhổ: chỉ tính khi cọc THỰC SỰ bị kéo (N_min < 0); nén thì = 0 (an toàn)
+                r2 = (max(0.0, -nmin) / Ct) if (Ct > 0) else None
+                ok_i = (nmax <= Po if Po > 0 else True) and (nmin >= -Ct if Ct > 0 else True)
+                rows.append({'th': i + 1, 'nmax': nmax, 'nmin': nmin,
+                             'r1': r1, 'r2': r2, 'ok': ok_i})
+                if nmax > gov_nmax:
+                    gov_nmax, gov_i = nmax, i + 1
+        util_max = (gov_nmax / Po) if (Po > 0 and gov_nmax > -1e17) else 0.0
+
+        # R3 (3d ≤ k/c ≤ 6d) và R4 (tim cọc → mép ≥ d) — thuần hình học, không đổi theo tổ hợp
+        s_act = float(rigid_cap.min_spacing(coords)) if len(coords) > 1 else 0.0
+        s_min_req, s_max_req = 3 * d, 6 * d
+        r3_ok = (len(coords) <= 1) or (s_min_req - 1e-3 <= s_act <= s_max_req + 1e-3)
+        max_x = float(np.max(np.abs(coords[:, 0]))) if len(coords) else 0.0
+        max_y = float(np.max(np.abs(coords[:, 1]))) if len(coords) else 0.0
+        Lx = params.get('L_X', 0) or 0
+        Ly = params.get('L_Y', 0) or 0
+        r4x = (max_x + c_min) / (Lx / 2) if Lx else 0.0
+        r4y = (max_y + c_min) / (Ly / 2) if Ly else 0.0
+        r4_ok = (r4x <= 1 + 1e-3) and (r4y <= 1 + 1e-3) if (Lx and Ly) else True
+
+        mxmax = cfg.get('mxmax', 0) or 0
+        mymax = cfg.get('mymax', 0) or 0
+        m_ok = (max(mxmax, mymax) <= Mlim) if Mlim > 0 else True
+
+        # Dòng tổng hợp hình học + uốn (mirror Mục 6 báo cáo)
+        geom_summary = [
+            f"R3 k/c: {s_act:.2f} m ∈ [{s_min_req:.2f}, {s_max_req:.2f}] "
+            + ('✓' if r3_ok else '✗'),
+            f"R4 tim→mép: {max(r4x, r4y) * 100:.0f}% " + ('✓' if r4_ok else '✗'),
+            (f"R5/R6 uốn M: max({mxmax:.1f}, {mymax:.1f}) ≤ {Mlim:.1f} T·m "
+             + ('✓' if m_ok else '✗')) if Mlim > 0 else "R5/R6 uốn M: không kiểm ([M]=0)",
+        ]
+
+        all_ok = bool(rows) and all(r['ok'] for r in rows) and r3_ok and r4_ok and m_ok
+        return {
+            'n_piles': len(coords), 'rows': rows, 'governing': gov_i,
+            'util_max': util_max, 'status': 'ĐẠT' if all_ok else 'KHÔNG ĐẠT',
+            'geom_summary': geom_summary, 'Po': Po, 'Ct': Ct,
+        }
+
+    def _update_kpi(self, cdata):
+        """Cập nhật dải KPI: số cọc (mục tiêu), hệ số sử dụng max, tổ hợp chi phối."""
+        gov = cdata['governing']
+        txt = (f"Số cọc: {cdata['n_piles']}      |      "
+               f"Hệ số sử dụng lớn nhất: {cdata['util_max']:.3f}"
+               + (f"  (TH{gov} chi phối)" if gov else "")
+               + f"      |      Trạng thái: {cdata['status']}")
+        self.lbl_kpi.config(text=txt, fg=("#1a3c5e" if cdata['status'] == 'ĐẠT' else "#b03a2e"))
 
     def populate_comboboxes(self, results):
         """Nạp combobox phương án + tổ hợp tải; mặc định chọn tổ hợp bất lợi nhất

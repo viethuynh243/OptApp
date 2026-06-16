@@ -5,14 +5,15 @@ Khác với file_io.export_output_file (định dạng MCOC), báo cáo này hư
 THẨM TRA KỸ SƯ: có hệ số sử dụng, tổ hợp chi phối, bảng ràng buộc R1-R8 kèm
 tỷ lệ, lực ngang Hmax, và phụ lục phạm vi/giới hạn mô hình.
 
-Đơn vị: tải trọng nhập kN/kN.m; sức chịu tải & lực cọc quy về Tấn (T) để so
-với [Po]/[Ct]. Hàm tự đọc từ results['recommended'] + params + loads.
+Đơn vị: toàn bộ ở Tấn (T) và T.m theo MCOC (tải trọng, [Po]/[Ct]/[M], lực cọc).
+Hàm tự đọc từ results['recommended'] + params + loads.
 """
 
 import os
 import numpy as np
 
 from core import rigid_cap
+from core.version import __version__
 from core.constants import (SPACING_MIN_FACTOR, SPACING_MAX_FACTOR,
                             get_safe_d, effective_min_spacing,
                             ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION)
@@ -66,8 +67,9 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     L = []
     L.append(f"# BAN TINH KIEM TRA & TOI UU BO TRI MONG COC")
     L.append(f"## Cong trinh: {project_name}\n")
-    L.append("Tieu chuan: TCVN 10304:2014 (mong coc); TCVN 11823 (cau, LRFD). "
-             "Noi luc tinh bang MCOC (chinh xac). Don vi: Tan (T), T.m.\n")
+    L.append(f"OptApp v{__version__}. Tieu chuan: TCVN 10304:2014 (mong coc); "
+             "TCVN 11823 (cau, LRFD). Noi luc tinh bang MCOC (chinh xac). "
+             "Don vi: Tan (T), T.m.\n")
 
     # 1. Số liệu đầu vào
     L.append("## 1. SO LIEU DAU VAO\n")
@@ -213,4 +215,187 @@ def export_technical_report(filepath, results, params, loads, project_name="Cong
         filepath = os.path.splitext(filepath)[0] + "_baocao_kythuat.md"
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(text)
+    return filepath
+
+
+# ============================================================================
+# Xuất báo cáo kỹ thuật dạng PDF (render bằng reportlab, hỗ trợ tiếng Việt)
+# ============================================================================
+# Cache tên font đã đăng ký để khỏi đăng ký lại mỗi lần xuất.
+_PDF_FONT = None
+
+
+def _register_pdf_fonts():
+    """Đăng ký font có dấu tiếng Việt cho reportlab.
+
+    Dùng DejaVuSans đi kèm matplotlib (đã có sẵn trong gói) để không phải thêm
+    tệp font riêng. Nếu không tìm thấy, lùi về Helvetica (mất dấu nhưng vẫn chạy).
+    Trả về (font_thuong, font_dam).
+    """
+    global _PDF_FONT
+    if _PDF_FONT:
+        return _PDF_FONT
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    try:
+        import matplotlib
+        base = os.path.join(os.path.dirname(matplotlib.__file__),
+                            'mpl-data', 'fonts', 'ttf')
+        pdfmetrics.registerFont(TTFont('DejaVu', os.path.join(base, 'DejaVuSans.ttf')))
+        pdfmetrics.registerFont(TTFont('DejaVu-Bold', os.path.join(base, 'DejaVuSans-Bold.ttf')))
+        pdfmetrics.registerFont(TTFont('DejaVu-Mono', os.path.join(base, 'DejaVuSansMono.ttf')))
+        pdfmetrics.registerFontFamily('DejaVu', normal='DejaVu', bold='DejaVu-Bold',
+                                      italic='DejaVu', boldItalic='DejaVu-Bold')
+        _PDF_FONT = ('DejaVu', 'DejaVu-Bold', 'DejaVu-Mono')
+    except Exception:
+        _PDF_FONT = ('Helvetica', 'Helvetica-Bold', 'Courier')
+    return _PDF_FONT
+
+
+def _render_markdown_pdf(md_text, out_path, base_dir=None):
+    """Render văn bản Markdown thành PDF (reportlab, hỗ trợ tiếng Việt).
+
+    Hỗ trợ: tiêu đề (#/##/###), bảng (| … | kể cả pipe thoát \\|), trích dẫn (>),
+    đường kẻ ngang (---), khối mã ```…```, ảnh ![alt](đường_dẫn) và in đậm (**…**).
+    `base_dir` dùng để giải đường dẫn ảnh tương đối (mặc định = thư mục out_path).
+    """
+    import re
+    import html as _html
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.utils import ImageReader
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                    TableStyle, HRFlowable, Preformatted, Image)
+
+    fn, fb, fm = _register_pdf_fonts()
+    base_dir = base_dir or os.path.dirname(os.path.abspath(out_path))
+    navy = colors.HexColor('#1a3c5e')
+    CONTENT_W = 180 * mm                                 # A4 trừ lề 15mm hai bên
+    S = {
+        'h1':   ParagraphStyle('h1', fontName=fb, fontSize=15, leading=19, spaceAfter=6, textColor=navy),
+        'h2':   ParagraphStyle('h2', fontName=fb, fontSize=12, leading=15, spaceBefore=8, spaceAfter=4, textColor=navy),
+        'h3':   ParagraphStyle('h3', fontName=fb, fontSize=10.5, leading=13, spaceBefore=6, spaceAfter=3),
+        'body': ParagraphStyle('body', fontName=fn, fontSize=9, leading=12, spaceAfter=2),
+        'note': ParagraphStyle('note', fontName=fn, fontSize=8.5, leading=11, leftIndent=6, textColor=colors.HexColor('#555')),
+        # Dùng font thường (DejaVuSans) cho khối mã: DejaVuSansMono THIẾU nhiều
+        # glyph tiếng Việt (ầ/ể/ổ…) nên dựng sai dấu. Giữ nền xám để vẫn ra "code".
+        'code': ParagraphStyle('code', fontName=fn, fontSize=8, leading=11, leftIndent=6,
+                               backColor=colors.HexColor('#f4f6f8'), textColor=colors.HexColor('#222')),
+        'cap':  ParagraphStyle('cap', fontName=fn, fontSize=8.5, leading=11, alignment=1, textColor=colors.HexColor('#555')),
+        'cell': ParagraphStyle('cell', fontName=fn, fontSize=8, leading=10),
+        'cellh': ParagraphStyle('cellh', fontName=fb, fontSize=8, leading=10, alignment=1, textColor=colors.white),
+    }
+    img_re = re.compile(r'^!\[(.*?)\]\((.*?)\)\s*$')
+
+    def inline(s):
+        """Thoát ký tự XML, bỏ pipe thoát \\| và nháy mã `, đổi **đậm** -> <b>."""
+        s = _html.escape(s).replace('\\|', '|').replace('`', '')
+        return re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', s)
+
+    def is_sep(cells):
+        return all(set(c) <= set('-: ') and '-' in c for c in cells)
+
+    def split_cells(row):
+        # Tách theo dấu | KHÔNG đứng sau '\' (giữ \| là pipe trong nội dung ô)
+        return [c.strip() for c in re.split(r'(?<!\\)\|', row.strip().strip('|'))]
+
+    def make_table(block):
+        parsed = [split_cells(r) for r in block]
+        parsed = [r for r in parsed if not is_sep(r)]
+        if not parsed:
+            return Spacer(1, 1)
+        ncol = max(len(r) for r in parsed)
+        for r in parsed:
+            r += [''] * (ncol - len(r))
+        data = [[Paragraph(inline(c), S['cellh']) for c in parsed[0]]]
+        for r in parsed[1:]:
+            data.append([Paragraph(inline(c), S['cell']) for c in r])
+        t = Table(data, colWidths=[CONTENT_W / ncol] * ncol, repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#34495e')),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#b0b8c0')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2), ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3), ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#eef1f4')]),
+        ]))
+        return t
+
+    def make_image(path, alt):
+        full = path if os.path.isabs(path) else os.path.join(base_dir, path)
+        if not os.path.exists(full):
+            return Paragraph(inline(f"[Thiếu ảnh: {alt or path}]"), S['note'])
+        iw, ih = ImageReader(full).getSize()
+        w = min(CONTENT_W, iw * 72.0 / 96.0)            # không phóng to quá khổ
+        return Image(full, width=w, height=w * ih / float(iw))
+
+    flow = []
+    lines = md_text.split('\n')
+    i = 0
+    while i < len(lines):
+        ln = lines[i].rstrip()
+        if not ln.strip():
+            flow.append(Spacer(1, 4)); i += 1; continue
+        if ln.lstrip().startswith('```'):               # khối mã
+            i += 1; code = []
+            while i < len(lines) and not lines[i].lstrip().startswith('```'):
+                code.append(lines[i]); i += 1
+            i += 1                                        # bỏ dòng ``` đóng
+            flow.append(Preformatted('\n'.join(code) or ' ', S['code']))
+            flow.append(Spacer(1, 4)); continue
+        if ln.lstrip().startswith('|'):                 # khối bảng
+            block = []
+            while i < len(lines) and lines[i].lstrip().startswith('|'):
+                block.append(lines[i]); i += 1
+            flow.append(make_table(block)); flow.append(Spacer(1, 6)); continue
+        m = img_re.match(ln.strip())
+        if m:                                            # ảnh
+            flow.append(make_image(m.group(2), m.group(1))); flow.append(Spacer(1, 4)); i += 1; continue
+        if ln.startswith('### '):
+            flow.append(Paragraph(inline(ln[4:]), S['h3']))
+        elif ln.startswith('## '):
+            flow.append(Paragraph(inline(ln[3:]), S['h2']))
+        elif ln.startswith('# '):
+            flow.append(Paragraph(inline(ln[2:]), S['h1']))
+        elif ln.strip() == '---':
+            flow.append(HRFlowable(width='100%', thickness=0.5, color=colors.HexColor('#cccccc'),
+                                   spaceBefore=3, spaceAfter=3))
+        elif ln.startswith('>'):
+            flow.append(Paragraph(inline(ln.lstrip('> ')), S['note']))
+        elif re.match(r'^\*\*Hình', ln) or re.match(r'^\*\*Bảng', ln):
+            flow.append(Paragraph(inline(ln), S['cap']))   # chú thích hình/bảng canh giữa
+        else:
+            flow.append(Paragraph(inline(ln), S['body']))
+        i += 1
+
+    doc = SimpleDocTemplate(out_path, pagesize=A4, title="Bao cao OptApp",
+                            leftMargin=15 * mm, rightMargin=15 * mm,
+                            topMargin=15 * mm, bottomMargin=15 * mm)
+    doc.build(flow)
+
+
+def export_markdown_pdf(md_path, pdf_path=None):
+    """Chuyển một tệp Markdown bất kỳ sang PDF. Trả về đường dẫn PDF.
+
+    Ảnh tương đối trong tài liệu được giải theo thư mục chứa tệp .md.
+    """
+    with open(md_path, 'r', encoding='utf-8') as f:
+        md = f.read()
+    if not pdf_path:
+        pdf_path = os.path.splitext(md_path)[0] + ".pdf"
+    _render_markdown_pdf(md, pdf_path, base_dir=os.path.dirname(os.path.abspath(md_path)))
+    return pdf_path
+
+
+def export_technical_report_pdf(filepath, results, params, loads, project_name="Cong trinh"):
+    """Ghi báo cáo kỹ thuật dạng PDF (cùng nội dung bản Markdown). Trả về filepath.
+
+    Tái dùng build_report_text làm nguồn DUY NHẤT để PDF và .md luôn khớp nhau.
+    """
+    text = build_report_text(results, params, loads, project_name)
+    if not filepath.lower().endswith('.pdf'):
+        filepath = os.path.splitext(filepath)[0] + ".pdf"
+    _render_markdown_pdf(text, filepath)
     return filepath
