@@ -141,9 +141,14 @@ def evaluate(ind, params, loads, evaluator, cache, counters):
     cv += max(0.0, pmax - Po) / max(Po, 1.0)                     # R5 nén
     if Ct > 0:
         cv += max(0.0, (-Ct) - pmin) / max(Ct, 1.0)             # R5b nhổ
-    s = min_spacing(coords)
-    cv += max(0.0, s_min - s) / s_min                            # R3 dưới (+ thông thủy)
-    cv += max(0.0, s - s_max) / s_max                            # R3 trên
+    # R3 khoảng cách: dùng NGUỒN DUY NHẤT rigid_cap.spacing_values để ĐỒNG NHẤT
+    # với check_layout/báo cáo/audit. Kiểu B kiểm ĐƯỜNG CHÉO √((sx/2)²+sy²),
+    # vì sx,sy mỗi cái ≤ 6d vẫn cho đường chéo tới ~6.7d > 6d — min_spacing bỏ sót.
+    for _lbl, sp_val, chk_up in rigid_cap.spacing_values(
+            spec['type'], spec['nx'], spec['ny'], spec['sx'], spec['sy'], coords):
+        cv += max(0.0, s_min - sp_val) / s_min                  # R3 dưới (+ thông thủy)
+        if chk_up:
+            cv += max(0.0, sp_val - s_max) / s_max              # R3 trên (kể cả đường chéo)
     mx = float(np.max(np.abs(coords[:, 0])))
     my = float(np.max(np.abs(coords[:, 1])))
     if 'L_X' in params:

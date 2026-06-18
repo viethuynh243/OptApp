@@ -250,7 +250,8 @@ class PlotCanvas:
         show_r2 = (data.get('Ct', 0) or 0) > 0
 
         # Tiêu đề tổng hợp: mục tiêu (số cọc) + hệ số sử dụng + tổ hợp chi phối
-        title = (f"BẢNG KIỂM TRA ĐIỀU KIỆN R1–R6  —  {data['n_piles']} cọc  |  "
+        cons_label = data.get('cons_label', 'R1–R6')
+        title = (f"BẢNG KIỂM TRA ĐIỀU KIỆN {cons_label}  —  {data['n_piles']} cọc  |  "
                  f"hệ số sử dụng max = {data['util_max']:.3f}"
                  + (f" (TH{data['governing']} chi phối)" if data['governing'] else "")
                  + f"  |  {data['status']}")

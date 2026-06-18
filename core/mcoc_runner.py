@@ -27,6 +27,26 @@ class MCOCError(Exception):
     pass
 
 
+def _no_window_kwargs():
+    """Trả về kwargs cho subprocess để KHÔNG bật cửa sổ cmd/console (Windows).
+
+    Khi app đóng gói dạng GUI (PyInstaller --windowed) gọi tiến trình con là
+    .bat/.exe/.py thì Windows mặc định bật một cửa sổ console. Dùng đồng thời:
+        - CREATE_NO_WINDOW : không cấp console mới cho tiến trình con.
+        - STARTUPINFO + SW_HIDE : ẩn cửa sổ nếu tiến trình vẫn cố hiện.
+    Ngoài Windows trả về dict rỗng (không ảnh hưởng).
+    """
+    if os.name != 'nt':
+        return {}
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+    return {
+        "creationflags": subprocess.CREATE_NO_WINDOW,
+        "startupinfo": startupinfo,
+    }
+
+
 def resolve_shortcut(path):
     """Resolve file .lnk về target thật (Windows). Trả về (target, arguments).
 
@@ -46,7 +66,8 @@ def resolve_shortcut(path):
     )
     out = subprocess.run(
         ["powershell", "-NoProfile", "-Command", ps],
-        capture_output=True, text=True, timeout=30
+        capture_output=True, text=True, timeout=30,
+        **_no_window_kwargs()
     )
     # Lọc các dòng không rỗng: dòng đầu là target, dòng sau (nếu có) là arguments
     lines = [l.strip() for l in out.stdout.splitlines() if l.strip()]
@@ -137,6 +158,7 @@ class MCOCRunner:
                 text=True,
                 cwd=workdir,
                 timeout=self.timeout,
+                **_no_window_kwargs()
             )
         except subprocess.TimeoutExpired:
             raise MCOCError("MCOC chay qua %ds, da dung." % self.timeout)

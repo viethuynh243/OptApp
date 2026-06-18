@@ -1,0 +1,224 @@
+{
+  "main": {
+    "id": "094a160b292d61fc",
+    "type": "split",
+    "children": [
+      {
+        "id": "d6cbc9013479e9d4",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "32460fd3f0b1698d",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "1-Phương pháp/Ràng buộc R1–R8.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Ràng buộc R1–R8"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "68462d2661ac8bc8",
+    "type": "split",
+    "children": [
+      {
+        "id": "b8cf667e75450537",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "0909df8c8956d99a",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "cfd496919d106fca",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "tag:#issues",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "9a614c33d4f9b4ba",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ],
+        "currentTab": 1
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "cbd5d7de0e0520cf",
+    "type": "split",
+    "children": [
+      {
+        "id": "ee90569652502424",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "5fad7802246e5a4a",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks"
+            }
+          },
+          {
+            "id": "7b31437d97e2cd86",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "2f686eb2dff01180",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "d49b6cd293fc545b",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "379a29949f0594c8",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "32460fd3f0b1698d",
+  "lastOpenFiles": [
+    "4-Vấn đề & Cải tiến/Vấn đề & Cải tiến.md.tmp.44644.e62b63e69669",
+    "4-Vấn đề & Cải tiến/Vấn đề & Cải tiến.md.tmp.44644.f45e68c59fc9",
+    "4-Vấn đề & Cải tiến/Vấn đề & Cải tiến.md.tmp.44644.b7d8fff79df4",
+    "4-Vấn đề & Cải tiến/Vấn đề & Cải tiến.md.tmp.44644.a9ff02b39176",
+    "Thuật ngữ.md",
+    "Quyết định (ADR).md",
+    "Bài toán & Phương pháp.md",
+    "Hướng dẫn AI.md",
+    "Untitled.canvas",
+    "2026-06-17.md",
+    "Kiến trúc mã nguồn.md",
+    "Vấn đề & Cải tiến.md",
+    "Hướng dẫn AI.md.tmp.44164.2310494f8de6",
+    "Thuật ngữ.md.tmp.44164.3a3f820ce6e3",
+    "Vấn đề & Cải tiến.md.tmp.44164.d0c17def4ccf",
+    "Quyết định (ADR).md.tmp.44164.458566b9a9c5",
+    "Kiến trúc mã nguồn.md.tmp.44164.9ccb0bc293c0",
+    "Bài toán & Phương pháp.md.tmp.44164.058fcefef05f",
+    "Home.md.tmp.44164.0f2d51c2fe6f",
+    "issues/issue-rigid-cap-centroid.md",
+    "Templates/Mẫu module.md",
+    "Templates/Mẫu khái niệm.md",
+    "Templates/Mẫu ADR.md",
+    "07 — Hướng dẫn AI/Nối Claude vào vault.md",
+    "06 — Vấn đề & Cải tiến/Song song hóa MCOC.md",
+    "06 — Vấn đề & Cải tiến/Gieo vét cạn vào NSGA-II.md",
+    "06 — Vấn đề & Cải tiến/Công thức bệ cứng - dời tâm.md",
+    "06 — Vấn đề & Cải tiến/Batch dùng mock (đã sửa).md",
+    "05 — Module mã nguồn/rigid_cap.md",
+    "05 — Module mã nguồn/mcoc_runner.md",
+    "05 — Module mã nguồn/blackbox.md",
+    "04 — Engine tối ưu/Refine optimizer.md",
+    "04 — Engine tối ưu/Quét lưới (demo).md",
+    "04 — Engine tối ưu/NSGA-II.md",
+    "03 — Khái niệm/Ràng buộc R1-R8.md",
+    "03 — Khái niệm/Mô hình bệ cứng.md",
+    "03 — Khái niệm/Chính xác vs tốc độ.md"
+  ]
+}

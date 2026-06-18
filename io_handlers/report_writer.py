@@ -37,8 +37,19 @@ def _ratio(actual, limit):
 # ============================================================================
 # Dựng nội dung báo cáo
 # ============================================================================
-def build_report_text(results, params, loads, project_name="Cong trinh"):
-    """Dựng nội dung báo cáo (str, Markdown). Tách riêng để dễ test."""
+def build_report_text(results, params, loads, project_name="Cong trinh",
+                      enable_R7=None, enable_R8=None, ext_info=None):
+    """Dựng nội dung báo cáo (str, Markdown). Tách riêng để dễ test.
+
+    enable_R7/enable_R8: ép BẬT/TẮT hiển thị R7/R8 (None = theo cờ core.constants).
+        Luồng tối ưu mở rộng truyền True để báo cáo thể hiện R7/R8 dù cờ lõi tắt.
+    ext_info: (tùy chọn) thông tin quét đường kính + thu bệ để thêm mục 3b.
+        {'winner_d', 'rows':[{'d','n','pmax','cost','ok'}], 'cap': cap_report}.
+    """
+    # Quyết định có hiển thị R7/R8 hay không (mặc định theo cờ lõi)
+    show_R7 = ENABLE_LATERAL_CHECK if enable_R7 is None else bool(enable_R7)
+    show_R8 = ENABLE_PM_INTERACTION if enable_R8 is None else bool(enable_R8)
+
     cfg = results.get('recommended')
     if not cfg:
         return f"# BAN TINH MONG COC — {project_name}\n\nKhong tim duoc phuong an thoa man.\n"
@@ -59,8 +70,16 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     raw_pmax = float(P.max()) if P.size else 0.0
     calib = (cfg['pmax'] / raw_pmax) if (raw_pmax > 0 and cfg.get('pmax')) else 1.0
 
-    # Hình học
-    s_act = rigid_cap.min_spacing(coords)
+    # Hình học — R3 theo CẤU TRÚC lưới để KHỚP với lõi (mechanics/nsga2):
+    # Kiểu B (hoa mai) hàng kề lệch sx/2 nên cặp gần nhất là ĐƯỜNG CHÉO
+    # √((sx/2)²+sy²); min_spacing bỏ sót cận TRÊN (sx,sy ≤ 6d vẫn cho chéo > 6d).
+    _spac = rigid_cap.spacing_values(cfg.get('type'), cfg.get('nx', 0), cfg.get('ny', 0),
+                                     cfg.get('sx', 0), cfg.get('sy', 0), coords)
+    s_low = min((v for _, v, _ in _spac), default=rigid_cap.min_spacing(coords))
+    _highs = [v for _, v, chk in _spac if chk]
+    s_high = max(_highs) if _highs else None        # None = không xác định cận trên
+    r3a_ok = s_low >= s_min_req - 1e-3
+    r3b_ok = (s_high is None) or (s_high <= s_max_req + 1e-3)
     max_x = float(np.max(np.abs(coords[:, 0])))
     max_y = float(np.max(np.abs(coords[:, 1])))
 
@@ -82,7 +101,7 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     L.append(f"| Suc chiu nen | [Po] | {_fmt(Po,1)} | T |")
     L.append(f"| Suc chiu nho | [Ct] | {_fmt(Ct,1)} | T |")
     L.append(f"| Suc chiu uon | [M] | {_fmt(Mlim,1)} | T.m |")
-    if ENABLE_LATERAL_CHECK:
+    if show_R7:
         L.append(f"| Suc chiu luc ngang | [H] | {_fmt(Hlim,1)} | T |")
     L.append("")
 
@@ -104,19 +123,55 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     L.append(f"- So coc: **{n}**" + (f" (luoi {cfg.get('nx')} x {cfg.get('ny')})"
                                      if cfg.get('nx') else ""))
     if cfg.get('sx'):
-        L.append(f"- Buoc coc: sx = {_fmt(cfg['sx'])} m; sy = {_fmt(cfg['sy'])} m")
+        _buoc = f"- Buoc coc: sx = {_fmt(cfg['sx'])} m; sy = {_fmt(cfg['sy'])} m"
+        if cfg.get('type') == 'B' and cfg.get('sy'):
+            _buoc += f"; cheo = {_fmt(float(np.hypot(cfg['sx'] / 2.0, cfg['sy'])))} m"
+        L.append(_buoc)
     L.append(f"- Ly do chon: {results.get('reason','')}")
     L.append("")
+
+    # 3b. Tối ưu mở rộng: quét đường kính + thu bệ (chỉ khi có ext_info)
+    if ext_info:
+        L.append("## 3b. TOI UU MO RONG (duong kinh + R7/R8 + thu be)\n")
+        L.append(f"- Duong kinh chon: **d = {_fmt(ext_info.get('winner_d', d))} m** "
+                 "(quet theo bang ung vien, cham bang MCOC chinh xac).")
+        L.append("")
+        L.append("| d (m) | So coc | Pmax (T) | Chi phi VL | KL |")
+        L.append("|---:|---:|---:|---:|:--:|")
+        for r in ext_info.get('rows', []):
+            kl = 'CHON' if abs(r['d'] - ext_info.get('winner_d', -1)) < 1e-9 else \
+                 ('DAT' if r.get('ok') else 'khong')
+            pmax_s = _fmt(r['pmax'], 1) if r.get('ok') else '-'
+            cost_s = f"{r['cost']:.3f}" if r.get('ok') else '-'
+            n_s = str(r['n']) if r.get('ok') else '-'
+            L.append(f"| {_fmt(r['d'])} | {n_s} | {pmax_s} | {cost_s} | {kl} |")
+        L.append("")
+        L.append("Chi phi VL = so coc x dien tich tiet dien (pi*d^2/4) — ty le the "
+                 "tich be tong coc tren 1 m dai; chon phuong an re nhat.\n")
+        cap = ext_info.get('cap')
+        if cap:
+            act = 'da ap dung' if cap.get('applied') else 'chi de xuat'
+            L.append(f"- **Thu kich thuoc be (TCVN, mep cach tim >= {_fmt(cap['safe_d'])} m):** "
+                     f"{_fmt(cap['old_LX'])} x {_fmt(cap['old_LY'])} -> "
+                     f"**{_fmt(cap['new_LX'])} x {_fmt(cap['new_LY'])} m** ({act}, "
+                     f"lam tron {_fmt(cap['round_to'])} m).")
+            if cap.get('saved_area', 0) > 1e-9:
+                L.append(f"- Tiet kiem dien tich be: {_fmt(cap['saved_area'])} m2 "
+                         f"({cap['saved_pct']:.1f}%).")
+        L.append("")
 
     # 4. Kiểm tra hình học
     L.append("## 4. KIEM TRA HINH HOC\n")
     L.append("| Ma | Dieu kien | Gia tri | Gioi han | Ty le | KL |")
     L.append("|---|---|---:|---:|---:|:--:|")
-    L.append(f"| R3a | Khoang cach tim-tim >= {_fmt(s_min_req)} m | {_fmt(s_act)} | "
-             f"{_fmt(s_min_req)} | {_ratio(s_min_req, s_act)} | "
-             f"{'DAT' if s_act >= s_min_req - 1e-3 else 'KHONG'} |")
-    L.append(f"| R3b | Khoang cach <= 6d | {_fmt(s_act)} | {_fmt(s_max_req)} | "
-             f"{_ratio(s_act, s_max_req)} | {'DAT' if s_act <= s_max_req + 1e-3 else 'KHONG'} |")
+    L.append(f"| R3a | Khoang cach tim-tim >= {_fmt(s_min_req)} m | {_fmt(s_low)} | "
+             f"{_fmt(s_min_req)} | {_ratio(s_min_req, s_low)} | "
+             f"{'DAT' if r3a_ok else 'KHONG'} |")
+    _r3b_val = _fmt(s_high) if s_high is not None else '-'
+    _r3b_ratio = _ratio(s_high, s_max_req) if s_high is not None else '-'
+    _r3b_kl = '-' if s_high is None else ('DAT' if r3b_ok else 'KHONG')
+    L.append(f"| R3b | Khoang cach <= 6d (Kieu B: duong cheo) | {_r3b_val} | "
+             f"{_fmt(s_max_req)} | {_r3b_ratio} | {_r3b_kl} |")
     L.append(f"| R4x | max|x| + c_min <= Lx/2 | {_fmt(max_x + SAFE_D)} | "
              f"{_fmt(params.get('L_X',0)/2)} | {_ratio(max_x + SAFE_D, params.get('L_X',0)/2)} | "
              f"{'DAT' if max_x + SAFE_D <= params.get('L_X',0)/2 + 1e-3 else 'KHONG'} |")
@@ -128,7 +183,7 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     # 5. Nội lực theo từng tổ hợp
     L.append("## 5. NOI LUC COC THEO TUNG TO HOP  (quy ve Tan)\n")
     # Cột H_max (lực ngang) chỉ hiện khi R7 được BẬT.
-    if ENABLE_LATERAL_CHECK:
+    if show_R7:
         L.append("| TH | N_max (T) | N_min (T) | H_max (T) | N_max/[Po] | KL |")
         L.append("|---|---:|---:|---:|---:|:--:|")
     else:
@@ -140,7 +195,7 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
         nmax = float(P[i].max()) * calib
         nmin = float(P[i].min()) * calib
         ok_i = (nmax <= Po if Po > 0 else True) and (nmin >= -Ct if Ct > 0 else True)
-        if ENABLE_LATERAL_CHECK:
+        if show_R7:
             Hxi, Hyi = rigid_cap.horizontal_forces(coords, ld, props)
             hmx = float(np.sqrt(Hxi ** 2 + Hyi ** 2).max())
             L.append(f"| {i+1} | {_fmt(nmax,1)} | {_fmt(nmin,1)} | {_fmt(hmx,1)} | "
@@ -166,19 +221,20 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
              f"{'DAT' if cfg['pmax'] <= Po else 'KHONG'} |")
     L.append(f"| R2 | N_min >= -[Ct] | {_fmt(cfg['pmin'],1)} | {_fmt(-Ct,1) if Ct>0 else '-'} | "
              f"{('DAT' if cfg['pmin'] >= -Ct else 'KHONG') if Ct>0 else '-'} |")
-    L.append(f"| R3 | 3d <= khoang cach <= 6d | {_fmt(s_act)} | "
+    _r3_val = _fmt(s_low) + (f" / {_fmt(s_high)}" if s_high is not None else "")
+    L.append(f"| R3 | 3d <= khoang cach <= 6d (Kieu B: chéo) | {_r3_val} | "
              f"[{_fmt(s_min_req)}, {_fmt(s_max_req)}] | "
-             f"{'DAT' if s_min_req-1e-3 <= s_act <= s_max_req+1e-3 else 'KHONG'} |")
+             f"{'DAT' if (r3a_ok and r3b_ok) else 'KHONG'} |")
     L.append(f"| R4 | Tim coc cach mep >= c_min | OK | - | "
              f"{'DAT' if (max_x+SAFE_D<=params.get('L_X',0)/2+1e-3 and max_y+SAFE_D<=params.get('L_Y',0)/2+1e-3) else 'KHONG'} |")
     L.append(f"| R5/R6 | Mx, My <= [M] | {_fmt(mmax,1)} | {_fmt(Mlim,1) if Mlim>0 else '-'} | "
              f"{('DAT' if mmax<=Mlim else 'KHONG') if Mlim>0 else '-'} |")
     # R7 (lực ngang) & R8 (tương tác P-M) chỉ hiện khi được BẬT trong constants.
-    if ENABLE_LATERAL_CHECK:
+    if show_R7:
         r7_kl = ('DAT' if hmax_cfg <= Hlim else 'KHONG') if Hlim > 0 else '-'
         L.append(f"| R7 | H_max <= [H] | {_fmt(hmax_cfg,1)} | "
                  f"{_fmt(Hlim,1) if Hlim>0 else '-'} | {r7_kl} |")
-    if ENABLE_PM_INTERACTION:
+    if show_R8:
         r8_kl = ('DAT' if (inter is not None and inter <= 1) else 'KHONG') if inter is not None else '-'
         L.append(f"| R8 | Tuong tac P-M <= 1 | "
                  f"{(_fmt(inter,2) if inter is not None else '-')} | "
@@ -196,7 +252,7 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     L.append("## PHU LUC — PHAM VI & GIOI HAN MO HINH\n")
     L.append("- Luc doc truc (be cung, doi momen ve trong tam nhom coc): "
              "`P_i = N/n + (Mx - N*cy)*(y_i-cy)/Ix + (My - N*cx)*(x_i-cx)/Iy`.")
-    if ENABLE_LATERAL_CHECK:
+    if show_R7:
         L.append("- Luc ngang H_max phan phoi tu Hx, Hy, Mz (tinh hoc, coc dung do cung deu); "
                  "**momen than coc do tai ngang** can phan tich p-y rieng khi dang ke.")
     L.append("- Chua xet: hieu ung nhom coc, do lun, ket cau be (chong thung/uon).")
@@ -208,9 +264,11 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
 # ============================================================================
 # Ghi báo cáo ra tệp
 # ============================================================================
-def export_technical_report(filepath, results, params, loads, project_name="Cong trinh"):
+def export_technical_report(filepath, results, params, loads, project_name="Cong trinh",
+                            enable_R7=None, enable_R8=None, ext_info=None):
     """Ghi báo cáo kỹ thuật (Markdown) ra filepath. Trả về filepath."""
-    text = build_report_text(results, params, loads, project_name)
+    text = build_report_text(results, params, loads, project_name,
+                             enable_R7=enable_R7, enable_R8=enable_R8, ext_info=ext_info)
     if not filepath.lower().endswith(('.md', '.txt')):
         filepath = os.path.splitext(filepath)[0] + "_baocao_kythuat.md"
     with open(filepath, 'w', encoding='utf-8') as f:
@@ -389,12 +447,14 @@ def export_markdown_pdf(md_path, pdf_path=None):
     return pdf_path
 
 
-def export_technical_report_pdf(filepath, results, params, loads, project_name="Cong trinh"):
+def export_technical_report_pdf(filepath, results, params, loads, project_name="Cong trinh",
+                                enable_R7=None, enable_R8=None, ext_info=None):
     """Ghi báo cáo kỹ thuật dạng PDF (cùng nội dung bản Markdown). Trả về filepath.
 
     Tái dùng build_report_text làm nguồn DUY NHẤT để PDF và .md luôn khớp nhau.
     """
-    text = build_report_text(results, params, loads, project_name)
+    text = build_report_text(results, params, loads, project_name,
+                             enable_R7=enable_R7, enable_R8=enable_R8, ext_info=ext_info)
     if not filepath.lower().endswith('.pdf'):
         filepath = os.path.splitext(filepath)[0] + ".pdf"
     _render_markdown_pdf(text, filepath)

@@ -95,24 +95,10 @@ def _geometry_errors(coords, nx, ny, sx, sy, layout_type, d, L_X, L_Y, SAFE_D, s
         errors.append(f"Vi pham mep be (X={max_x:.2f})")
     if max_y + SAFE_D > L_Y / 2 + GEOM_TOL:
         errors.append(f"Vi pham mep be (Y={max_y:.2f})")
-    # R3: hàm tiện ích kiểm tra một khoảng cách có nằm trong [s_min, s_max]
-    in_range = lambda v: s_min - GEOM_TOL <= v <= s_max + GEOM_TOL
-    if layout_type == "A":
-        # Lưới trực giao: kiểm tra trực tiếp sx, sy
-        if nx > 1 and not in_range(sx):
-            errors.append("sx vi pham 3d-6d")
-        if ny > 1 and not in_range(sy):
-            errors.append("sy vi pham 3d-6d")
-    elif layout_type == "B":
-        # Hoa mai: sx theo phương ngang, hàng kề nhau lệch nên xét khoảng cách chéo
-        if nx > 1 and not in_range(sx):
-            errors.append("sx vi pham 3d-6d")
-        diag = np.sqrt((sx / 2) ** 2 + sy ** 2)
-        if ny > 1 and not in_range(diag):
-            errors.append("khoang cach cheo vi pham 3d-6d")
-    else:
-        # Bố trí tuỳ biến: xét khoảng cách tim-tim nhỏ nhất thực tế
-        s = rigid_cap.min_spacing(coords)
-        if s < s_min - GEOM_TOL:
-            errors.append(f"khoang cach tim-tim nho nhat {s:.2f}m < {s_min:.2f}m")
+    # R3: dùng NGUỒN DUY NHẤT rigid_cap.spacing_values (Kiểu B xét đường chéo).
+    for label, val, chk_up in rigid_cap.spacing_values(layout_type, nx, ny, sx, sy, coords):
+        if val < s_min - GEOM_TOL:
+            errors.append(f"{label} = {val:.2f}m < 3d ({s_min:.2f}m)")
+        elif chk_up and val > s_max + GEOM_TOL:
+            errors.append(f"{label} = {val:.2f}m > 6d ({s_max:.2f}m)")
     return errors

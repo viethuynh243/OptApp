@@ -1,13 +1,13 @@
 # BÀN GIAO CÔNG VIỆC — OptApp (Tối ưu bố trí cọc móng cầu)
 
 > Mục đích: ghi lại toàn bộ việc đã làm trong phiên hôm nay để chuyển tài khoản/người tiếp tục.
-> Cập nhật: 2026-06-15.
+> Cập nhật: 2026-06-16.
 
 ---
 
 ## 0. TÓM TẮT NHANH (đọc cái này trước)
 
-- Dự án: ứng dụng Python/Tkinter tối ưu **số cọc ít nhất** cho móng cọc cầu, đánh giá nội lực bằng **MCOC** (chính xác) hoặc bệ cứng (xấp xỉ).
+- Dự án: ứng dụng Python/Tkinter tối ưu **số cọc ít nhất** cho móng cọc cầu; đánh giá nội lực bằng **MCOC** (chính xác) hoặc bệ cứng (xấp xỉ).
 - Trong phiên này đã: **viết engine NSGA-II**, **refactor gom code trùng**, **đưa MCOC làm mặc định (chính xác, bỏ xấp xỉ)**, **mở rộng mô hình (Hx/Hy/Mz)**, **sửa nhiều lỗi/UX**, **chuẩn hóa đơn vị về Tấn**, **tiêm tải UI vào MCOC**, **thêm mục tiêu "bệ gọn"**.
 - ~~**VIỆC CẦN LÀM NGAY:** chạy lại các test trên MÁY THẬT~~ → ✅ **ĐÃ XONG (2026-06-15):** toàn bộ test PASS, GUI chạy đúng, và đường MCOC thật đã kiểm chứng (MCOC_Batch.exe chạy + tải UI tác động kết quả). Chi tiết ở mục 4 & 5. Không còn việc tồn đọng bắt buộc.
 
@@ -96,8 +96,8 @@
   - `run_demo.py` ✅ (bệ cứng, Pmax=486.91 T ≤ [Po]=500 T).
   - `main.py`, `ui/main_window.py`, `ui/plot_canvas.py` parse OK.
 - 🔧 **Sửa 2 test cũ bị lỗi thời (stale) so với quyết định thiết kế:**
-  - `test_model_ext.py::test_R7_R8_in_check`: trước assert R7 phải chặn, nhưng R7 đã TẮT (`ENABLE_LATERAL_CHECK=False`). Nay test **tôn trọng cờ**: khi R7 tắt thì xác nhận luc ngang KHÔNG bị chặn (và in `[SKIP]`); khi bật lại mới kiểm tra chặn.
-  - `test_model_ext.py::test_report`: tải cũ (N=2800, Mx=1800…) quá lớn so với bệ 6×9.6 → optimizer không tìm được phương án → báo cáo rơi vào nhánh "không tìm được" nên thiếu mục. Nay dùng tải vừa sức (N=2000/1800, M nhỏ hơn) để sinh báo cáo đầy đủ. (Trước đây test này bị che vì TEST 3 abort sớm nên chưa từng chạy tới.)
+  - `test_model_ext.py::test_R7_R8_in_check`: trước assert R7 phải chặn, nhưng R7 đã TẮT (`ENABLE_LATERAL_CHECK=False`). Nay test **tôn trọng cờ**: R7 tắt thì xác nhận lực ngang KHÔNG bị chặn (in `[SKIP]`); bật lại mới kiểm tra chặn.
+  - `test_model_ext.py::test_report`: tải cũ (N=2800, Mx=1800…) quá lớn so với bệ 6×9.6 → optimizer không tìm được phương án → báo cáo rơi vào nhánh "không tìm được", thiếu mục. Nay dùng tải vừa sức (N=2000/1800, M nhỏ hơn) để sinh báo cáo đầy đủ. (Trước đây test này bị che vì TEST 3 abort sớm nên chưa chạy tới.)
 - ℹ️ Sự cố mount sandbox của phiên trước đã hết tác động: bản trên đĩa đúng, test thật xanh.
 
 ---
