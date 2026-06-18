@@ -913,7 +913,7 @@ class MainWindow:
                 # Chấm phương án gốc (để so sánh) — cùng bộ tải UI
                 orig_res = evaluator(np.array(params['original_coords'], dtype=float))
                 results = run_nsga2(params, loads, evaluator=evaluator,
-                                    pop_size=20, n_gen=10, max_evals=120,
+                                    pop_size=20, n_gen=10, max_evals=140,
                                     secondary=self.var_secondary.get(),
                                     log=self._log_refine)
                 results['_orig_eval'] = (len(params['original_coords']), orig_res)
@@ -1246,7 +1246,7 @@ class MainWindow:
                     return
                 out = run_extended_optimization(
                     params, loads, table, cfg=cfg, d_orig=d_orig, Po_orig=Po_orig,
-                    pop_size=16, n_gen=8, max_evals=100,
+                    pop_size=16, n_gen=8, max_evals=140,
                     secondary=self.var_secondary.get(), log=self._log_refine)
                 self.root.after(0, lambda: self._show_ext_results(out, cfg))
             except Exception as e:

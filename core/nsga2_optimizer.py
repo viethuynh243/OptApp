@@ -378,14 +378,24 @@ def _build_seed_genomes(params):
                           'sx': float(spec['sx'] or SPACING_MIN_FACTOR * d),
                           'sy': float(spec['sy'] or SPACING_MIN_FACTOR * d)})
 
-    # 2) Liệt kê lưới: type × nx × ny × vài bước lưới (kẹp edge-fit ở decode)
-    s_facs = (SPACING_MIN_FACTOR, 4.0, 5.0, SPACING_MAX_FACTOR)
-    for t in ('A', 'B'):
-        for nx in range(1, nmax_x + 1):
-            for ny in range(1, nmax_y + 1):
-                for sf in s_facs:
-                    seeds.append({'type': t, 'nx': nx, 'ny': ny,
-                                  'sx': sf * d, 'sy': sf * d})
+    # 2) Liệt kê lưới type×nx×ny. Hai điều CỐT YẾU để tập hạt giống đủ NHỎ mà vẫn
+    #    PHỦ vùng khả thi trong ngân sách max_evals (lỗi cũ: 178 spec, lưới khả thi
+    #    nằm tận #109 -> hết ngân sách trước khi tới nó -> báo "vô nghiệm"):
+    #      - BỎ lưới 1 hàng/1 cột (nx<2 hoặc ny<2) — gần như vô dụng.
+    #      - Chỉ 2 bước lưới: 3d (dày nhất -> nhiều cọc, hợp tải lớn) và 6d (thưa
+    #        -> ít cọc; decode tự kẹp về cận mép). Bước trung gian do tiến hóa lo.
+    #    SẮP XẾP theo SỐ CỌC TĂNG DẦN: khớp mục tiêu "ít cọc nhất" và bảo đảm khi
+    #    ngân sách hẹp vẫn quét đủ phổ số cọc (cả ít lẫn nhiều).
+    s_facs = (SPACING_MIN_FACTOR, SPACING_MAX_FACTOR)
+    combos = [(t, nx, ny)
+              for t in ('A', 'B')
+              for nx in range(2, nmax_x + 1)
+              for ny in range(2, nmax_y + 1)]
+    combos.sort(key=lambda c: (c[1] * c[2], c[1], c[2]))   # ít cọc trước
+    for t, nx, ny in combos:
+        for sf in s_facs:
+            seeds.append({'type': t, 'nx': nx, 'ny': ny,
+                          'sx': sf * d, 'sy': sf * d})
     return seeds
 
 
