@@ -628,13 +628,20 @@ class MainWindow:
             try:
                 params, loads, proj_name = parse_input_file(filepath)
 
-                # Cập nhật tất cả thông số từ file lên UI
-                keys_to_update = ['L_X', 'L_Y', 'D_PILE', 'P_LIMIT', 'P_TENSION', 'M_LIMIT']
-                for k in keys_to_update:
+                # Cập nhật thông số HÌNH HỌC từ file (Lx/Ly/d là số liệu THẬT).
+                for k in ('L_X', 'L_Y', 'D_PILE'):
                     if k in params and params[k] is not None and params[k] > 0:
                         # StringVar: hiển thị gọn (bỏ ".0" thừa)
-                        val = params[k]
-                        self.params[k].set(f"{val:g}")
+                        self.params[k].set(f"{params[k]:g}")
+
+                # Giới hạn SỨC CHỊU TẢI ([Po]/[Ct]/[M]) trong file MCOC chỉ là GIÁ
+                # TRỊ MẶC ĐỊNH (thường 500) — MCOC không dùng để chấm. Vì vậy CHỈ
+                # điền khi ô đang TRỐNG, KHÔNG ghi đè giá trị người dùng đã nhập
+                # (tránh bẫy: nạp file làm [Po] bị về 500 -> mọi phương án "trượt").
+                for k in ('P_LIMIT', 'P_TENSION', 'M_LIMIT'):
+                    cur = self.params[k].get().strip()
+                    if (not cur) and k in params and params[k] is not None and params[k] > 0:
+                        self.params[k].set(f"{params[k]:g}")
 
                 if 'original_coords' in params:
                     self.original_coords = params['original_coords']
@@ -1200,7 +1207,9 @@ class MainWindow:
         params['mock_mode'] = False
         loads = list(self.loads)
         d_orig = getattr(self, 'original_d', None) or self._pget('D_PILE')
-        Po_orig = getattr(self, 'original_p', None) or self._pget('P_LIMIT')
+        # [Po] trong file MCOC chỉ là mặc định (500) — ƯU TIÊN giá trị người dùng
+        # nhập trên UI làm sức chịu nén GỐC; chỉ lùi về giá trị file nếu UI trống.
+        Po_orig = self._pget('P_LIMIT') or getattr(self, 'original_p', None) or 500.0
 
         # Bảng đường kính: dùng bảng người dùng, hoặc 1 dòng từ thông số hiện tại
         from core.ext.pile_section import DiameterTable
