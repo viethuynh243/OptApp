@@ -7,7 +7,7 @@
 
 #define AppName "OptApp - Toi uu bo tri coc mong cau"
 #define AppNameVi "OptApp - Tối ưu bố trí cọc móng cầu"
-#define AppVersion "1.0.0"
+#define AppVersion "1.2.0"
 #define AppPublisher "TEDI - Tong Cong ty Tu van Thiet ke GTVT"
 #define AppExe "OptApp.exe"
 

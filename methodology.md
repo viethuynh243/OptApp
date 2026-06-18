@@ -327,7 +327,9 @@ H_i = √(Hxi² + Hyi²)
 | **R8** | tương tác nén–uốn `Pmax/[Po] + Mmax/[M] ≤ 1` | có cả `[Po]` và `[M]` |
 | **Thông thủy** | khoảng cách tim–tim `≥ max(3d, d + thông_thủy)` | `CLEAR_MIN > 0` (đặt 1.0 cho cọc khoan nhồi) |
 
-> **Lưu ý tiêu chuẩn:** cận dưới **3d** là yêu cầu TCVN 10304:2014 (cọc ma sát); cọc khoan nhồi còn cần **thông thủy ≥ 1 m**. Cận trên **6d không phải giới hạn tiêu chuẩn** mà là quy ước thực hành (giữ giả thiết bệ cứng + bệ hiệu quả).
+> **Lưu ý tiêu chuẩn:** cận dưới **3d** là yêu cầu TCVN 10304:2014 (cọc ma sát); cọc khoan nhồi còn cần **thông thủy ≥ 1 m**. Cận trên **6d không phải giới hạn tiêu chuẩn** mà là quy ước thực hành (giữ giả thiết bệ cứng + bệ hiệu quả). **Từ v1.3.0:** 6d hạ cấp thành **cảnh báo mềm** (`ENFORCE_SPACING_MAX=False`) — vẫn là cận tìm kiếm nhưng không loại phương án vượt 6d.
+
+> **Sức chịu tải thiết kế (TCVN 10304:2014 Điều 7.1.11) — v1.3.0:** `core/tcvn.py` là nguồn duy nhất tính `Rc,d = (γ0/γn)·(Rc,k/γk)`. Khai báo `R_C_K` + `GAMMA_0`/`GAMMA_N`(hoặc `IMPORTANCE_LEVEL`)/`GAMMA_K` thì `[Po]`/`[Ct]` tự thành `Rc,d`/`Rt,d`; không khai báo thì `[Po]` nhập tay được coi đã là `Rc,d`. Module còn có `equivalent_block` (móng khối quy ước, Điều 7.4) và `settlement` (lún, Phụ lục C) — kích hoạt khi có số liệu địa chất (`pile_length`, `phi_tb`, `soil_below`, `S_LIMIT`), in ở **mục 6b** của báo cáo. **OptApp chỉ phủ TTGH I theo lực dọc trục**; sức chịu tải theo vật liệu, nhóm cọc/lún (7.4) và tải ngang (Phụ lục A) phải kiểm riêng — báo cáo nêu rõ.
 
 `nsga2_optimizer` và `refine_optimizer` dùng chung `core.rigid_cap` nên các ràng buộc áp dụng nhất quán. Báo cáo kỹ thuật (`io_handlers/report_writer.py`) in bảng ràng buộc **R1–R6** kèm **hệ số sử dụng** và **tổ hợp chi phối** (thêm R7/R8 chỉ khi bật); mẫu xem `docs/ban_output_chuan_ky_thuat.md`.
 

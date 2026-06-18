@@ -5,17 +5,19 @@ Khác với file_io.export_output_file (định dạng MCOC), báo cáo này hư
 THẨM TRA KỸ SƯ: có hệ số sử dụng, tổ hợp chi phối, bảng ràng buộc R1-R8 kèm
 tỷ lệ, lực ngang Hmax, và phụ lục phạm vi/giới hạn mô hình.
 
-Đơn vị: tải trọng nhập kN/kN.m; sức chịu tải & lực cọc quy về Tấn (T) để so
-với [Po]/[Ct]. Hàm tự đọc từ results['recommended'] + params + loads.
+Đơn vị: toàn bộ ở Tấn (T) và T.m theo MCOC (tải trọng, [Po]/[Ct]/[M], lực cọc).
+Hàm tự đọc từ results['recommended'] + params + loads.
 """
 
 import os
 import numpy as np
 
-from core import rigid_cap
+from core import rigid_cap, tcvn
+from core.version import __version__
 from core.constants import (SPACING_MIN_FACTOR, SPACING_MAX_FACTOR,
                             get_safe_d, effective_min_spacing,
-                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION)
+                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION,
+                            ENFORCE_SPACING_MAX)
 
 
 # ============================================================================
@@ -42,6 +44,7 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     if not cfg:
         return f"# BAN TINH MONG COC — {project_name}\n\nKhong tim duoc phuong an thoa man.\n"
 
+    tcvn.apply_design_capacities(params)   # bảo đảm Po = Rc,d (Điều 7.1.11) nếu có Rc,k
     coords = np.asarray(cfg['coords'], dtype=float)
     n = len(coords)
     d = params['D_PILE']
@@ -66,8 +69,9 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     L = []
     L.append(f"# BAN TINH KIEM TRA & TOI UU BO TRI MONG COC")
     L.append(f"## Cong trinh: {project_name}\n")
-    L.append("Tieu chuan: TCVN 10304:2014 (mong coc); TCVN 11823 (cau, LRFD). "
-             "Noi luc tinh bang MCOC (chinh xac). Don vi: Tan (T), T.m.\n")
+    L.append(f"OptApp v{__version__}. Tieu chuan: TCVN 10304:2014 (mong coc); "
+             "TCVN 11823 (cau, LRFD). Noi luc tinh bang MCOC (chinh xac). "
+             "Don vi: Tan (T), T.m.\n")
 
     # 1. Số liệu đầu vào
     L.append("## 1. SO LIEU DAU VAO\n")
@@ -77,12 +81,35 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     L.append(f"| Dai be | Ly | {_fmt(params.get('L_Y',0))} | m |")
     L.append(f"| Duong kinh coc | d | {_fmt(d)} | m |")
     L.append(f"| Tim coc -> mep be toi thieu | c_min | {_fmt(SAFE_D)} | m |")
-    L.append(f"| Suc chiu nen | [Po] | {_fmt(Po,1)} | T |")
-    L.append(f"| Suc chiu nho | [Ct] | {_fmt(Ct,1)} | T |")
+    src = params.get('_capacity_source', 'input')
+    po_label = "[Po] = Rc,d" if src == 'tcvn_7.1.11' else "[Po]"
+    ct_label = "[Ct] = Rt,d" if src == 'tcvn_7.1.11' else "[Ct]"
+    L.append(f"| Suc chiu nen | {po_label} | {_fmt(Po,1)} | T |")
+    L.append(f"| Suc chiu nho | {ct_label} | {_fmt(Ct,1)} | T |")
     L.append(f"| Suc chiu uon | [M] | {_fmt(Mlim,1)} | T.m |")
     if ENABLE_LATERAL_CHECK:
         L.append(f"| Suc chiu luc ngang | [H] | {_fmt(Hlim,1)} | T |")
     L.append("")
+
+    # 1b. Sức chịu tải thiết kế theo Điều 7.1.11 (chỉ khi nhập Rc,k + hệ số γ)
+    if src == 'tcvn_7.1.11':
+        g = params.get('_tcvn_factors', {})
+        L.append("**Suc chiu tai thiet ke (TCVN 10304:2014, Dieu 7.1.11):** "
+                 "`Rc,d = (g0/gn) * (Rc,k/gk)`\n")
+        L.append("| Dai luong | Ky hieu | Gia tri |")
+        L.append("|---|---|---:|")
+        L.append(f"| SCT nen tieu chuan | Rc,k | {_fmt(g.get('R_ck',0),1)} T |")
+        if g.get('R_tk'):
+            L.append(f"| SCT keo tieu chuan | Rt,k | {_fmt(g.get('R_tk',0),1)} T |")
+        L.append(f"| He so dieu kien lam viec | g0 | {_fmt(g.get('gamma_0',0),3)} |")
+        L.append(f"| He so tin cay tam quan trong | gn | {_fmt(g.get('gamma_n',0),3)} |")
+        L.append(f"| He so tin cay theo dat | gk | {_fmt(g.get('gamma_k',0),3)} |")
+        L.append(f"| => SCT nen thiet ke | Rc,d | {_fmt(Po,1)} T |")
+        L.append("")
+    else:
+        L.append("> [Po]/[Ct] duoc NHAP truc tiep, coi la SUC CHIU TAI THIET KE Rc,d/Rt,d. "
+                 "De chuong trinh tu tinh theo Dieu 7.1.11, hay khai bao Rc,k (R_C_K) "
+                 "cung g0 (GAMMA_0), gn (GAMMA_N hoac IMPORTANCE_LEVEL), gk (GAMMA_K).\n")
 
     # 2. Tổ hợp tải trọng
     L.append("## 2. TO HOP TAI TRONG  (luc T, momen T.m)\n")
@@ -113,8 +140,13 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     L.append(f"| R3a | Khoang cach tim-tim >= {_fmt(s_min_req)} m | {_fmt(s_act)} | "
              f"{_fmt(s_min_req)} | {_ratio(s_min_req, s_act)} | "
              f"{'DAT' if s_act >= s_min_req - 1e-3 else 'KHONG'} |")
-    L.append(f"| R3b | Khoang cach <= 6d | {_fmt(s_act)} | {_fmt(s_max_req)} | "
-             f"{_ratio(s_act, s_max_req)} | {'DAT' if s_act <= s_max_req + 1e-3 else 'KHONG'} |")
+    # R3b: 6d KHONG phai gioi han TCVN -> chi canh bao khi vuot (tru khi bat ENFORCE_SPACING_MAX)
+    if s_act <= s_max_req + 1e-3:
+        r3b_kl = 'DAT'
+    else:
+        r3b_kl = 'KHONG' if ENFORCE_SPACING_MAX else 'CANH BAO'
+    L.append(f"| R3b | Khoang cach <= 6d (quy uoc) | {_fmt(s_act)} | {_fmt(s_max_req)} | "
+             f"{_ratio(s_act, s_max_req)} | {r3b_kl} |")
     L.append(f"| R4x | max|x| + c_min <= Lx/2 | {_fmt(max_x + SAFE_D)} | "
              f"{_fmt(params.get('L_X',0)/2)} | {_ratio(max_x + SAFE_D, params.get('L_X',0)/2)} | "
              f"{'DAT' if max_x + SAFE_D <= params.get('L_X',0)/2 + 1e-3 else 'KHONG'} |")
@@ -164,9 +196,15 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
              f"{'DAT' if cfg['pmax'] <= Po else 'KHONG'} |")
     L.append(f"| R2 | N_min >= -[Ct] | {_fmt(cfg['pmin'],1)} | {_fmt(-Ct,1) if Ct>0 else '-'} | "
              f"{('DAT' if cfg['pmin'] >= -Ct else 'KHONG') if Ct>0 else '-'} |")
-    L.append(f"| R3 | 3d <= khoang cach <= 6d | {_fmt(s_act)} | "
-             f"[{_fmt(s_min_req)}, {_fmt(s_max_req)}] | "
-             f"{'DAT' if s_min_req-1e-3 <= s_act <= s_max_req+1e-3 else 'KHONG'} |")
+    # R3: cận dưới 3d (TCVN) bắt buộc; cận trên 6d chỉ là quy ước (cảnh báo).
+    if s_act < s_min_req - 1e-3:
+        r3_kl = 'KHONG'
+    elif s_act > s_max_req + 1e-3:
+        r3_kl = 'KHONG' if ENFORCE_SPACING_MAX else 'CANH BAO (>6d)'
+    else:
+        r3_kl = 'DAT'
+    L.append(f"| R3 | k/c >= 3d (TCVN); <= 6d (quy uoc) | {_fmt(s_act)} | "
+             f"[{_fmt(s_min_req)}, {_fmt(s_max_req)}] | {r3_kl} |")
     L.append(f"| R4 | Tim coc cach mep >= c_min | OK | - | "
              f"{'DAT' if (max_x+SAFE_D<=params.get('L_X',0)/2+1e-3 and max_y+SAFE_D<=params.get('L_Y',0)/2+1e-3) else 'KHONG'} |")
     L.append(f"| R5/R6 | Mx, My <= [M] | {_fmt(mmax,1)} | {_fmt(Mlim,1) if Mlim>0 else '-'} | "
@@ -183,6 +221,41 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
                  f"{'1.00' if inter is not None else '-'} | {r8_kl} |")
     L.append("")
 
+    # 6b. Kiểm tra nhóm cọc: móng khối quy ước & lún (Điều 7.4)
+    L.append("## 6b. MONG KHOI QUY UOC & DO LUN  (TCVN 10304:2014, Dieu 7.4)\n")
+    block = tcvn.equivalent_block(coords, params)
+    if block.get('evaluated'):
+        L.append("| Dai luong | Ky hieu | Gia tri |")
+        L.append("|---|---|---:|")
+        L.append(f"| Chieu dai coc | Lc | {_fmt(block['Lc'])} m |")
+        L.append(f"| Goc ma sat trung binh | phi_tb | {_fmt(block['phi_tb'],1)} do |")
+        L.append(f"| Be rong khoi quy uoc | Bqu | {_fmt(block['B_qu'])} m |")
+        L.append(f"| Chieu dai khoi quy uoc | Lqu | {_fmt(block['L_qu'])} m |")
+        L.append(f"| Dien tich day khoi | Aqu | {_fmt(block['A_qu'])} m2 |")
+        L.append(f"| Do sau day khoi | Df | {_fmt(block['base_depth'])} m |")
+        L.append("")
+        st = tcvn.settlement(coords, loads, params)
+        if st.get('evaluated'):
+            S_mm = st['S'] * 1000.0
+            Sgh = st.get('S_limit')
+            kl = '-' if Sgh is None else ('DAT' if st.get('ok') else 'KHONG')
+            L.append(f"- Ap luc gay lun day khoi quy uoc: p_gl = {_fmt(st['p_gl'],2)} T/m2.")
+            L.append(f"- Do lun tinh toan S = **{_fmt(S_mm,1)} mm** "
+                     f"(phuong phap cong lun tung lop, Phu luc C; beta=0,8).")
+            if Sgh is not None:
+                L.append(f"- Do lun gioi han S_gh = {_fmt(Sgh*1000.0,1)} mm -> **{kl}**.")
+            else:
+                L.append("- Chua khai bao do lun gioi han S_gh (S_LIMIT) de ket luan dat/khong.")
+        else:
+            L.append(f"> **CHUA KIEM DO LUN** — {st.get('reason','')}. "
+                     "Khai bao `soil_below` (cac lop dat duoi mui: h, E, gamma) de tinh.")
+    else:
+        L.append(f"> **CHUA KIEM MONG KHOI QUY UOC / DO LUN** — {block.get('reason','')}.")
+        L.append("> Theo Dieu 7.4, mong NHOM coc bat buoc kiem suc chiu tai khoi quy uoc "
+                 "va do lun S <= S_gh. Hay bo sung: `pile_length` (Lc), `phi_tb`, "
+                 "`soil_below` (lop dat duoi mui), `S_LIMIT`.")
+    L.append("")
+
     # 7. Kết luận
     status = "DAT" if cfg.get('ok', True) else "KHONG DAT"
     L.append("## 7. KET LUAN\n")
@@ -197,7 +270,15 @@ def build_report_text(results, params, loads, project_name="Cong trinh"):
     if ENABLE_LATERAL_CHECK:
         L.append("- Luc ngang H_max phan phoi tu Hx, Hy, Mz (tinh hoc, coc dung do cung deu); "
                  "**momen than coc do tai ngang** can phan tich p-y rieng khi dang ke.")
-    L.append("- Chua xet: hieu ung nhom coc, do lun, ket cau be (chong thung/uon).")
+    L.append("- Pham vi OptApp: kiem TTGH I theo LUC DOC TRUC tung coc "
+             "(N_max <= Rc,d; N_min >= -Rt,d) + hinh hoc bo tri. "
+             "Suc chiu tai Rc,d/Rt,d theo Dieu 7.1.11.")
+    L.append("- Can kiem RIENG theo TCVN 10304:2014 (xem muc 6b neu da nhap so lieu dia chat):")
+    L.append("  - Suc chiu tai theo VAT LIEU coc (Dieu 7.1.11 + 7.2): Rc,d = min(theo dat, theo vat lieu).")
+    L.append("  - Suc chiu tai NHOM coc / mong khoi quy uoc va DO LUN (Dieu 7.4).")
+    L.append("  - Coc & chuyen vi NGANG theo mo hinh nen (Phu luc A) khi Hx, Hy dang ke.")
+    L.append("- Tai trong N, M phai la NOI LUC TINH TOAN (da to hop, nhan he so) theo "
+             "TCVN 2737 / TCVN 11823.")
     L.append("- Ket qua dung cho bo tri so bo/toi uu; thiet ke chi tiet phai chay MCOC/FEM day du.")
     L.append("")
     return "\n".join(L)
@@ -213,4 +294,187 @@ def export_technical_report(filepath, results, params, loads, project_name="Cong
         filepath = os.path.splitext(filepath)[0] + "_baocao_kythuat.md"
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(text)
+    return filepath
+
+
+# ============================================================================
+# Xuất báo cáo kỹ thuật dạng PDF (render bằng reportlab, hỗ trợ tiếng Việt)
+# ============================================================================
+# Cache tên font đã đăng ký để khỏi đăng ký lại mỗi lần xuất.
+_PDF_FONT = None
+
+
+def _register_pdf_fonts():
+    """Đăng ký font có dấu tiếng Việt cho reportlab.
+
+    Dùng DejaVuSans đi kèm matplotlib (đã có sẵn trong gói) để không phải thêm
+    tệp font riêng. Nếu không tìm thấy, lùi về Helvetica (mất dấu nhưng vẫn chạy).
+    Trả về (font_thuong, font_dam).
+    """
+    global _PDF_FONT
+    if _PDF_FONT:
+        return _PDF_FONT
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    try:
+        import matplotlib
+        base = os.path.join(os.path.dirname(matplotlib.__file__),
+                            'mpl-data', 'fonts', 'ttf')
+        pdfmetrics.registerFont(TTFont('DejaVu', os.path.join(base, 'DejaVuSans.ttf')))
+        pdfmetrics.registerFont(TTFont('DejaVu-Bold', os.path.join(base, 'DejaVuSans-Bold.ttf')))
+        pdfmetrics.registerFont(TTFont('DejaVu-Mono', os.path.join(base, 'DejaVuSansMono.ttf')))
+        pdfmetrics.registerFontFamily('DejaVu', normal='DejaVu', bold='DejaVu-Bold',
+                                      italic='DejaVu', boldItalic='DejaVu-Bold')
+        _PDF_FONT = ('DejaVu', 'DejaVu-Bold', 'DejaVu-Mono')
+    except Exception:
+        _PDF_FONT = ('Helvetica', 'Helvetica-Bold', 'Courier')
+    return _PDF_FONT
+
+
+def _render_markdown_pdf(md_text, out_path, base_dir=None):
+    """Render văn bản Markdown thành PDF (reportlab, hỗ trợ tiếng Việt).
+
+    Hỗ trợ: tiêu đề (#/##/###), bảng (| … | kể cả pipe thoát \\|), trích dẫn (>),
+    đường kẻ ngang (---), khối mã ```…```, ảnh ![alt](đường_dẫn) và in đậm (**…**).
+    `base_dir` dùng để giải đường dẫn ảnh tương đối (mặc định = thư mục out_path).
+    """
+    import re
+    import html as _html
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.utils import ImageReader
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer, Table,
+                                    TableStyle, HRFlowable, Preformatted, Image)
+
+    fn, fb, fm = _register_pdf_fonts()
+    base_dir = base_dir or os.path.dirname(os.path.abspath(out_path))
+    navy = colors.HexColor('#1a3c5e')
+    CONTENT_W = 180 * mm                                 # A4 trừ lề 15mm hai bên
+    S = {
+        'h1':   ParagraphStyle('h1', fontName=fb, fontSize=15, leading=19, spaceAfter=6, textColor=navy),
+        'h2':   ParagraphStyle('h2', fontName=fb, fontSize=12, leading=15, spaceBefore=8, spaceAfter=4, textColor=navy),
+        'h3':   ParagraphStyle('h3', fontName=fb, fontSize=10.5, leading=13, spaceBefore=6, spaceAfter=3),
+        'body': ParagraphStyle('body', fontName=fn, fontSize=9, leading=12, spaceAfter=2),
+        'note': ParagraphStyle('note', fontName=fn, fontSize=8.5, leading=11, leftIndent=6, textColor=colors.HexColor('#555')),
+        # Dùng font thường (DejaVuSans) cho khối mã: DejaVuSansMono THIẾU nhiều
+        # glyph tiếng Việt (ầ/ể/ổ…) nên dựng sai dấu. Giữ nền xám để vẫn ra "code".
+        'code': ParagraphStyle('code', fontName=fn, fontSize=8, leading=11, leftIndent=6,
+                               backColor=colors.HexColor('#f4f6f8'), textColor=colors.HexColor('#222')),
+        'cap':  ParagraphStyle('cap', fontName=fn, fontSize=8.5, leading=11, alignment=1, textColor=colors.HexColor('#555')),
+        'cell': ParagraphStyle('cell', fontName=fn, fontSize=8, leading=10),
+        'cellh': ParagraphStyle('cellh', fontName=fb, fontSize=8, leading=10, alignment=1, textColor=colors.white),
+    }
+    img_re = re.compile(r'^!\[(.*?)\]\((.*?)\)\s*$')
+
+    def inline(s):
+        """Thoát ký tự XML, bỏ pipe thoát \\| và nháy mã `, đổi **đậm** -> <b>."""
+        s = _html.escape(s).replace('\\|', '|').replace('`', '')
+        return re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', s)
+
+    def is_sep(cells):
+        return all(set(c) <= set('-: ') and '-' in c for c in cells)
+
+    def split_cells(row):
+        # Tách theo dấu | KHÔNG đứng sau '\' (giữ \| là pipe trong nội dung ô)
+        return [c.strip() for c in re.split(r'(?<!\\)\|', row.strip().strip('|'))]
+
+    def make_table(block):
+        parsed = [split_cells(r) for r in block]
+        parsed = [r for r in parsed if not is_sep(r)]
+        if not parsed:
+            return Spacer(1, 1)
+        ncol = max(len(r) for r in parsed)
+        for r in parsed:
+            r += [''] * (ncol - len(r))
+        data = [[Paragraph(inline(c), S['cellh']) for c in parsed[0]]]
+        for r in parsed[1:]:
+            data.append([Paragraph(inline(c), S['cell']) for c in r])
+        t = Table(data, colWidths=[CONTENT_W / ncol] * ncol, repeatRows=1)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#34495e')),
+            ('GRID', (0, 0), (-1, -1), 0.4, colors.HexColor('#b0b8c0')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 2), ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3), ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#eef1f4')]),
+        ]))
+        return t
+
+    def make_image(path, alt):
+        full = path if os.path.isabs(path) else os.path.join(base_dir, path)
+        if not os.path.exists(full):
+            return Paragraph(inline(f"[Thiếu ảnh: {alt or path}]"), S['note'])
+        iw, ih = ImageReader(full).getSize()
+        w = min(CONTENT_W, iw * 72.0 / 96.0)            # không phóng to quá khổ
+        return Image(full, width=w, height=w * ih / float(iw))
+
+    flow = []
+    lines = md_text.split('\n')
+    i = 0
+    while i < len(lines):
+        ln = lines[i].rstrip()
+        if not ln.strip():
+            flow.append(Spacer(1, 4)); i += 1; continue
+        if ln.lstrip().startswith('```'):               # khối mã
+            i += 1; code = []
+            while i < len(lines) and not lines[i].lstrip().startswith('```'):
+                code.append(lines[i]); i += 1
+            i += 1                                        # bỏ dòng ``` đóng
+            flow.append(Preformatted('\n'.join(code) or ' ', S['code']))
+            flow.append(Spacer(1, 4)); continue
+        if ln.lstrip().startswith('|'):                 # khối bảng
+            block = []
+            while i < len(lines) and lines[i].lstrip().startswith('|'):
+                block.append(lines[i]); i += 1
+            flow.append(make_table(block)); flow.append(Spacer(1, 6)); continue
+        m = img_re.match(ln.strip())
+        if m:                                            # ảnh
+            flow.append(make_image(m.group(2), m.group(1))); flow.append(Spacer(1, 4)); i += 1; continue
+        if ln.startswith('### '):
+            flow.append(Paragraph(inline(ln[4:]), S['h3']))
+        elif ln.startswith('## '):
+            flow.append(Paragraph(inline(ln[3:]), S['h2']))
+        elif ln.startswith('# '):
+            flow.append(Paragraph(inline(ln[2:]), S['h1']))
+        elif ln.strip() == '---':
+            flow.append(HRFlowable(width='100%', thickness=0.5, color=colors.HexColor('#cccccc'),
+                                   spaceBefore=3, spaceAfter=3))
+        elif ln.startswith('>'):
+            flow.append(Paragraph(inline(ln.lstrip('> ')), S['note']))
+        elif re.match(r'^\*\*Hình', ln) or re.match(r'^\*\*Bảng', ln):
+            flow.append(Paragraph(inline(ln), S['cap']))   # chú thích hình/bảng canh giữa
+        else:
+            flow.append(Paragraph(inline(ln), S['body']))
+        i += 1
+
+    doc = SimpleDocTemplate(out_path, pagesize=A4, title="Bao cao OptApp",
+                            leftMargin=15 * mm, rightMargin=15 * mm,
+                            topMargin=15 * mm, bottomMargin=15 * mm)
+    doc.build(flow)
+
+
+def export_markdown_pdf(md_path, pdf_path=None):
+    """Chuyển một tệp Markdown bất kỳ sang PDF. Trả về đường dẫn PDF.
+
+    Ảnh tương đối trong tài liệu được giải theo thư mục chứa tệp .md.
+    """
+    with open(md_path, 'r', encoding='utf-8') as f:
+        md = f.read()
+    if not pdf_path:
+        pdf_path = os.path.splitext(md_path)[0] + ".pdf"
+    _render_markdown_pdf(md, pdf_path, base_dir=os.path.dirname(os.path.abspath(md_path)))
+    return pdf_path
+
+
+def export_technical_report_pdf(filepath, results, params, loads, project_name="Cong trinh"):
+    """Ghi báo cáo kỹ thuật dạng PDF (cùng nội dung bản Markdown). Trả về filepath.
+
+    Tái dùng build_report_text làm nguồn DUY NHẤT để PDF và .md luôn khớp nhau.
+    """
+    text = build_report_text(results, params, loads, project_name)
+    if not filepath.lower().endswith('.pdf'):
+        filepath = os.path.splitext(filepath)[0] + ".pdf"
+    _render_markdown_pdf(text, filepath)
     return filepath

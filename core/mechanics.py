@@ -9,7 +9,8 @@ from core import rigid_cap
 from core.blackbox import MCOCBlackbox
 from core.constants import (SPACING_MAX_FACTOR, GEOM_TOL, get_safe_d,
                             get_m_limit, get_h_limit, effective_min_spacing,
-                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION)
+                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION,
+                            ENFORCE_SPACING_MAX)
 
 
 # ============================================================================
@@ -85,9 +86,14 @@ def _geometry_errors(coords, nx, ny, sx, sy, layout_type, d, L_X, L_Y, SAFE_D, s
     """Kiểm tra ràng buộc hình học của bố trí, trả về danh sách lỗi.
 
     R4 mép bệ: cọc ngoài cùng + SAFE_D không vượt nửa kích thước bệ.
-    R3 khoảng cách: sx/sy (hoặc khoảng cách chéo, tim-tim) nằm trong 3d..6d.
+    R3 khoảng cách: cận dưới 3d (TCVN 10304:2014) là BẮT BUỘC; cận trên 6d chỉ là
+    quy ước thực hành nên CHỈ loại phương án khi ENFORCE_SPACING_MAX=True, ngược
+    lại vượt 6d không tính là lỗi (báo cáo nêu cảnh báo).
     """
     errors = []
+    # in_range: chỉ kẹp cận trên khi bật cờ; nếu không, mọi giá trị >= s_min đều đạt.
+    hi = (s_max + GEOM_TOL) if ENFORCE_SPACING_MAX else float('inf')
+    in_range = lambda v: s_min - GEOM_TOL <= v <= hi
     # R4: kiểm tra cọc ngoài cùng so với mép bệ theo 2 phương
     max_x = np.max(np.abs(coords[:, 0]))
     max_y = np.max(np.abs(coords[:, 1]))
@@ -95,8 +101,7 @@ def _geometry_errors(coords, nx, ny, sx, sy, layout_type, d, L_X, L_Y, SAFE_D, s
         errors.append(f"Vi pham mep be (X={max_x:.2f})")
     if max_y + SAFE_D > L_Y / 2 + GEOM_TOL:
         errors.append(f"Vi pham mep be (Y={max_y:.2f})")
-    # R3: hàm tiện ích kiểm tra một khoảng cách có nằm trong [s_min, s_max]
-    in_range = lambda v: s_min - GEOM_TOL <= v <= s_max + GEOM_TOL
+    # R3: kiểm sx/sy (Kiểu A) hoặc đường chéo (Kiểu B) theo in_range ở trên.
     if layout_type == "A":
         # Lưới trực giao: kiểm tra trực tiếp sx, sy
         if nx > 1 and not in_range(sx):
