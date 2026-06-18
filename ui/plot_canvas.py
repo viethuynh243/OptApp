@@ -61,7 +61,7 @@ class PlotCanvas:
                                       fill=False, label='Giới hạn tâm cọc', zorder=2)
         self.ax.add_patch(safe_rect)
 
-    def _finalize(self, L_X, L_Y, title=None, has_colorbar=False):
+    def _finalize(self, L_X, L_Y, title=None, has_colorbar=False, title_color='black'):
         """Thiết lập trục, lưới, tiêu đề, chú thích chung và vẽ lại canvas."""
         # Giới hạn trục với lề 1 m quanh bệ, giữ tỉ lệ thật (aspect='equal')
         self.ax.set_xlim(-L_X / 2 - 1, L_X / 2 + 1)
@@ -71,18 +71,19 @@ class PlotCanvas:
         self.ax.set_xlabel('Trục X (m)')
         self.ax.set_ylabel('Trục Y (m)')
         if title:
-            self.ax.set_title(title, fontsize=10, fontweight='bold', pad=10)
+            self.ax.set_title(title, fontsize=10.5, fontweight='bold', pad=8, color=title_color)
         # Chú thích đặt phía dưới để không đè lên tiêu đề
-        self.ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.10), ncol=2, fontsize=8,
+        self.ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.09), ncol=2, fontsize=8,
                        frameon=True, fancybox=True)
         if has_colorbar:
-            # Có colorbar (xem tương tác): tight_layout xử lý gọn colorbar + tiêu đề dài.
-            self.fig.tight_layout()
+            # Có colorbar (xem tương tác): tight_layout với rect chừa lề trên cho
+            # tiêu đề 2 dòng và lề dưới cho chú thích, tránh CẮT tiêu đề.
+            self.fig.tight_layout(rect=[0, 0.03, 1, 0.94], pad=1.0)
         else:
             # Không colorbar (xuất hàng loạt): lề CỐ ĐỊNH để mọi hình cùng bố cục,
             # giúp ảnh đồng đều dù tỉ lệ bệ (L_X:L_Y) khác nhau. Dữ liệu giữ
             # aspect='equal' nên được canh giữa trong vùng vẽ cố định.
-            self.fig.subplots_adjust(left=0.10, right=0.95, top=0.90, bottom=0.16)
+            self.fig.subplots_adjust(left=0.10, right=0.95, top=0.88, bottom=0.16)
         # Dùng draw_idle() để KHÔNG block UI (tránh đơ)
         self.canvas.draw_idle()
 
@@ -192,14 +193,6 @@ class PlotCanvas:
                          fontsize=7.5, color=p_clr, fontweight=p_weight,
                          bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1), zorder=4)
 
-        # Bước 3: nhãn Mmax toàn bệ (góc dưới phải)
-        if m_forces and max_m > 0:
-            self.ax.text(0.98, 0.02, f"Max Momen = {max_m:.1f} T.m",
-                         transform=self.ax.transAxes, ha='right', va='bottom',
-                         fontsize=9, color='red' if is_m_over_global else 'navy',
-                         fontweight='bold',
-                         bbox=dict(facecolor='white', alpha=0.8, edgecolor='gray'), zorder=5)
-
         # Bước 4: colorbar dùng chung thang màu với mặt cọc
         sm = ScalarMappable(cmap=_PILE_CMAP, norm=norm)
         sm.set_array([])
@@ -215,14 +208,26 @@ class PlotCanvas:
         # ĐẠT khi không có cọc vượt nén, không cọc nhổ và không vượt momen
         is_ok = (n_over == 0 and n_pull == 0 and not is_m_over_global)
         status = "ĐẠT" if is_ok else "KHÔNG ĐẠT"
-        title = (f"{n_piles} cọc  |  Pmax={pmax:.1f}T / Pmin={pmin:.1f}T  |  {status}")
+        flags = []
         if n_over:
-            title += f"  ({n_over} cọc vượt nén)"
+            flags.append(f"{n_over} cọc vượt nén")
         if n_pull:
-            title += f"  ({n_pull} cọc nhổ)"
+            flags.append(f"{n_pull} cọc nhổ")
+        if is_m_over_global:
+            flags.append("vượt mômen")
+        # Tiêu đề 2 dòng cho gọn: dòng 1 số cọc + kết luận (+ cờ vi phạm);
+        # dòng 2 các trị số Pmax/Pmin (+ Mmax nếu có kiểm uốn).
+        line1 = f"{n_piles} cọc  —  {status}"
+        if flags:
+            line1 += "  (" + ", ".join(flags) + ")"
+        line2 = f"Pmax={pmax:.1f}T    Pmin={pmin:.1f}T"
+        if m_forces and max_m > 0:
+            line2 += f"    Mmax={max_m:.1f}T.m"
+        title = f"{line1}\n{line2}"
 
         # Bước 6: hoàn thiện trục/lưới/chú thích và vẽ lại canvas
-        self._finalize(L_X, L_Y, title=title, has_colorbar=True)
+        self._finalize(L_X, L_Y, title=title, has_colorbar=True,
+                       title_color=('#b03a2e' if not is_ok else 'navy'))
 
     # ========================================================================
     # Vẽ bảng kiểm toán ràng buộc (chuẩn tư vấn thiết kế)
