@@ -35,9 +35,53 @@ class PlotCanvas:
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
         self.canvas = FigureCanvasTkAgg(self.fig, master=master)
         self.widget = self.canvas.get_tk_widget()
+        # Tự co giãn (auto-scale): nhớ lệnh vẽ gần nhất để VẼ LẠI khi cửa sổ đổi
+        # kích thước; cỡ chữ tính theo kích thước figure (_font_scale) nên bảng/
+        # nhãn không bị tràn hay đổi bố cục khi người dùng chỉnh layout.
+        self._redraw_cb = None
+        self._last_size = (0, 0)
+        self._resize_after = None
+        self.widget.bind('<Configure>', self._on_resize)
+
+    def _on_resize(self, event):
+        """Vẽ lại nội dung hiện tại khi widget đổi kích thước (có debounce).
+
+        Chỉ kích hoạt khi kích thước THỰC SỰ đổi để tránh đệ quy (thao tác vẽ
+        cũng phát sinh sự kiện <Configure>)."""
+        size = (event.width, event.height)
+        if self._redraw_cb is None or (abs(size[0] - self._last_size[0]) < 2
+                                       and abs(size[1] - self._last_size[1]) < 2):
+            return
+        self._last_size = size
+        if self._resize_after is not None:
+            try:
+                self.widget.after_cancel(self._resize_after)
+            except Exception:
+                pass
+        self._resize_after = self.widget.after(120, self._run_redraw)
+
+    def _run_redraw(self):
+        """Thực thi lệnh vẽ gần nhất (bọc try để resize không làm sập UI)."""
+        self._resize_after = None
+        cb = self._redraw_cb
+        if cb is not None:
+            try:
+                cb()
+            except Exception:
+                pass
+
+    def _font_scale(self):
+        """Hệ số co giãn cỡ chữ theo chiều cao figure (px) so với mốc 600px —
+        giữ tỉ lệ chữ/ô không đổi khi figure phóng to/thu nhỏ."""
+        try:
+            h_px = self.fig.get_size_inches()[1] * self.fig.dpi
+            return float(np.clip(h_px / 600.0, 0.6, 2.4))
+        except Exception:
+            return 1.0
 
     def clear(self):
         """Đưa khung vẽ về trạng thái TRỐNG như lúc mới mở (không vẽ bệ/cọc)."""
+        self._redraw_cb = None
         self.fig.clf()
         self.ax = self.fig.add_subplot(111)
         self.canvas.draw_idle()
@@ -91,6 +135,8 @@ class PlotCanvas:
     # ========================================================================
     def draw_simulation(self, coords, params, forces=None, m_forces=None):
         """Vẽ mặt bằng bố trí cọc; tô màu theo lực P nếu có nội lực kèm theo."""
+        # Ghi nhớ để VẼ LẠI khi cửa sổ đổi kích thước (auto-scale)
+        self._redraw_cb = lambda: self.draw_simulation(coords, params, forces, m_forces)
         # Xóa nội dung cũ, tạo lại axes sạch cho lần vẽ mới
         self.fig.clf()
         self.ax = self.fig.add_subplot(111)
@@ -240,6 +286,9 @@ class PlotCanvas:
           - Hình học R3/R4 và uốn R5/R6 (không đổi theo tổ hợp) tổng hợp ở dưới.
         `data` lấy từ MainWindow._build_constraint_data.
         """
+        # Ghi nhớ để VẼ LẠI khi cửa sổ đổi kích thước (auto-scale)
+        self._redraw_cb = lambda: self.draw_constraint_view(data)
+        fs = self._font_scale()   # hệ số co giãn cỡ chữ theo kích thước figure
         self.fig.clf()
         ax = self.ax = self.fig.add_subplot(111)
         ax.axis('off')
@@ -256,11 +305,11 @@ class PlotCanvas:
                  + (f" (TH{data['governing']} chi phối)" if data['governing'] else "")
                  + f"  |  {data['status']}")
         tcol = 'navy' if data['status'] == 'ĐẠT' else '#b03a2e'
-        ax.set_title(title, fontsize=9.5, fontweight='bold', color=tcol, pad=8)
+        ax.set_title(title, fontsize=9.5 * fs, fontweight='bold', color=tcol, pad=8)
 
         if not rows:
             ax.text(0.5, 0.5, "Chưa có dữ liệu tổ hợp tải trọng để kiểm toán.",
-                    ha='center', va='center', fontsize=11, color='gray')
+                    ha='center', va='center', fontsize=11 * fs, color='gray')
             self.fig.tight_layout()
             self.canvas.draw_idle()
             return
@@ -292,7 +341,7 @@ class PlotCanvas:
             ax.add_patch(patches.Rectangle((col_x[c], yhdr), col_x[c + 1] - col_x[c], row_h,
                                            facecolor='#34495e', edgecolor='white', lw=1, zorder=1))
             ax.text((col_x[c] + col_x[c + 1]) / 2, yhdr + row_h / 2, headers[c],
-                    ha='center', va='center', color='white', fontsize=7.5, fontweight='bold', zorder=2)
+                    ha='center', va='center', color='white', fontsize=7.5 * fs, fontweight='bold', zorder=2)
 
         # Các dòng tổ hợp
         for ri, rec in enumerate(rows):
@@ -317,7 +366,7 @@ class PlotCanvas:
                 ax.add_patch(patches.Rectangle((col_x[c], y), col_x[c + 1] - col_x[c], row_h,
                                                facecolor=fc, edgecolor='#cfd6dd', lw=0.6, zorder=1))
                 ax.text((col_x[c] + col_x[c + 1]) / 2, y + row_h / 2, vals[c],
-                        ha='center', va='center', color=tc, fontsize=7.5,
+                        ha='center', va='center', color=tc, fontsize=7.5 * fs,
                         fontweight='bold' if (is_gov or c >= 3) else 'normal', zorder=2)
 
             # Nhấn mạnh tổ hợp chi phối
@@ -328,20 +377,20 @@ class PlotCanvas:
         # Ghi chú ý nghĩa con số trong ô
         ax.text(0.0, bottom - 0.012,
                 "Số trong ô R1/R2 = tỷ lệ huy động (giá trị / giới hạn cho phép).",
-                ha='left', va='top', fontsize=7.5, color='#555')
+                ha='left', va='top', fontsize=7.5 * fs, color='#555')
 
         # Chú thích màu (legend): ô màu + nhãn trạng thái
         ly, sw, sh = bottom - 0.055, 0.020, 0.030
         ax.add_patch(patches.Rectangle((0.0, ly), sw, sh, facecolor=C_PASS, edgecolor='none'))
-        ax.text(0.028, ly + sh / 2, "ĐẠT (tỷ lệ ≤ 1.0)", ha='left', va='center', fontsize=7.5, color='#333')
+        ax.text(0.028, ly + sh / 2, "ĐẠT (tỷ lệ ≤ 1.0)", ha='left', va='center', fontsize=7.5 * fs, color='#333')
         ax.add_patch(patches.Rectangle((0.30, ly), sw, sh, facecolor=C_FAIL, edgecolor='none'))
-        ax.text(0.328, ly + sh / 2, "KHÔNG ĐẠT (vượt giới hạn)", ha='left', va='center', fontsize=7.5, color='#333')
+        ax.text(0.328, ly + sh / 2, "KHÔNG ĐẠT (vượt giới hạn)", ha='left', va='center', fontsize=7.5 * fs, color='#333')
         ax.add_patch(patches.Rectangle((0.68, ly), sw, sh, fill=False, edgecolor='#c0392b', lw=2.0))
-        ax.text(0.708, ly + sh / 2, "tổ hợp chi phối", ha='left', va='center', fontsize=7.5, color='#333')
+        ax.text(0.708, ly + sh / 2, "tổ hợp chi phối", ha='left', va='center', fontsize=7.5 * fs, color='#333')
 
         # Tổng hợp hình học R3/R4 + uốn R5/R6 (không đổi theo tổ hợp)
         ax.text(0.0, bottom - 0.115, "   |   ".join(data.get('geom_summary', [])),
-                ha='left', va='top', fontsize=8, color='#222', fontweight='bold')
+                ha='left', va='top', fontsize=8 * fs, color='#222', fontweight='bold')
 
         self.fig.tight_layout()
         self.canvas.draw_idle()

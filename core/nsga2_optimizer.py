@@ -347,6 +347,67 @@ def _random_individual(params, rng):
     }
 
 
+def _build_seed_genomes(params):
+    """Danh sách genome TẤT ĐỊNH gieo vào quần thể khởi tạo.
+
+    Vùng khả thi của bài toán bố trí cọc thường là một "lát rất mỏng" (khoảng
+    cách cọc bị kẹp gần đúng 3d do giới hạn mép bệ; Kiểu B còn bị siết thêm bởi
+    ràng buộc đường chéo R3), nên toán tử ngẫu nhiên của NSGA-II RẤT khó trúng
+    — dẫn tới báo "không có phương án" dù lời giải tồn tại (rõ nhất ở luồng mở
+    rộng: ngân sách nhỏ + R7/R8 bật). Hàm này bảo đảm vùng khả thi (nếu có)
+    luôn được đánh giá, không phụ thuộc may rủi của hạt giống ngẫu nhiên:
+        1) Phương án GỐC của kỹ sư (giải mã thành lưới) — đã biết hợp lý.
+        2) Liệt kê toàn bộ lưới type×nx×ny ở vài bước lưới đại diện.
+
+    Trùng lặp sau khi giải mã (clamp về cùng spec) được cache khử ở evaluate,
+    nên số lần gọi MCOC THỰC = số spec phân biệt, không lãng phí.
+    """
+    from core.refine_optimizer import detect_grid
+    d, SAFE_D, maxx, maxy, nmax_x, nmax_y = _grid_bounds(params)
+    seeds = []
+
+    # 1) Phương án gốc (nếu nhận diện được thành lưới đều / hoa mai)
+    orig = params.get('original_coords')
+    if orig is not None and len(orig) >= 2:
+        try:
+            spec = detect_grid(np.asarray(orig, dtype=float))
+        except Exception:
+            spec = None
+        if spec:
+            seeds.append({'type': spec['type'], 'nx': spec['nx'], 'ny': spec['ny'],
+                          'sx': float(spec['sx'] or SPACING_MIN_FACTOR * d),
+                          'sy': float(spec['sy'] or SPACING_MIN_FACTOR * d)})
+
+    # 2) Liệt kê lưới: type × nx × ny × vài bước lưới (kẹp edge-fit ở decode)
+    s_facs = (SPACING_MIN_FACTOR, 4.0, 5.0, SPACING_MAX_FACTOR)
+    for t in ('A', 'B'):
+        for nx in range(1, nmax_x + 1):
+            for ny in range(1, nmax_y + 1):
+                for sf in s_facs:
+                    seeds.append({'type': t, 'nx': nx, 'ny': ny,
+                                  'sx': sf * d, 'sy': sf * d})
+    return seeds
+
+
+def _environmental_selection(combined, pop_size):
+    """Chọn lọc môi trường NSGA-II: lấy pop_size cá thể tốt nhất từ combined
+    theo front không-bị-thống-trị + khoảng cách chen chúc (dùng chung cho cả
+    bước khởi tạo lẫn vòng tiến hóa)."""
+    fronts = fast_non_dominated_sort(combined)
+    new_pop = []
+    for fr in fronts:
+        crowding_distance(combined, fr)
+        if len(new_pop) + len(fr) <= pop_size:
+            new_pop.extend(combined[i] for i in fr)
+        else:
+            remaining = pop_size - len(new_pop)
+            fr_sorted = sorted(fr, key=lambda i: combined[i].get('crowd', 0.0),
+                               reverse=True)
+            new_pop.extend(combined[i] for i in fr_sorted[:remaining])
+            break
+    return new_pop
+
+
 # ===========================================================================
 # Vòng lặp chính NSGA-II
 # ===========================================================================
@@ -410,13 +471,23 @@ def run_nsga2(params, loads, evaluator=None, pop_size=40, n_gen=30,
         return out
 
     # ---- Khởi tạo quần thể -------------------------------------------------
-    pop = _eval_pop([_random_individual(params, rng) for _ in range(pop_size)])
+    # Gieo TẤT ĐỊNH trước (phương án gốc + liệt kê lưới) rồi mới bù ngẫu nhiên.
+    # Hạt giống được đánh giá TRƯỚC nên giành ngân sách max_evals; bảo đảm vùng
+    # khả thi (nếu tồn tại) luôn nằm trong cache để xét 'recommended' — kể cả khi
+    # ngân sách nhỏ (luồng mở rộng) hay R7/R8 siết chặt vùng khả thi.
+    seeded = _eval_pop(_build_seed_genomes(params))
+    log("Gieo tat dinh: %d hat giong (goc + liet ke luoi), kha thi=%d"
+        % (len(seeded), sum(1 for r in seeded if r['ok'])))
+    rand_pop = _eval_pop([_random_individual(params, rng) for _ in range(pop_size)])
+    pop = _environmental_selection(seeded + rand_pop, pop_size) or seeded
     fronts = fast_non_dominated_sort(pop)
     for fr in fronts:
         crowding_distance(pop, fr)
 
     # ---- Tiến hóa ----------------------------------------------------------
     for gen in range(n_gen):
+        if not pop:                     # hết ngân sách ngay từ khởi tạo -> dừng
+            break
         offspring_genomes = []
         while len(offspring_genomes) < pop_size:
             p1 = _tournament(pop, rng)['genome']
@@ -428,20 +499,7 @@ def run_nsga2(params, loads, evaluator=None, pop_size=40, n_gen=30,
 
         offspring = _eval_pop(offspring_genomes)
         combined = pop + offspring
-
-        fronts = fast_non_dominated_sort(combined)
-        new_pop = []
-        for fr in fronts:
-            crowding_distance(combined, fr)
-            if len(new_pop) + len(fr) <= pop_size:
-                new_pop.extend(combined[i] for i in fr)
-            else:
-                remaining = pop_size - len(new_pop)
-                fr_sorted = sorted(fr, key=lambda i: combined[i].get('crowd', 0.0),
-                                   reverse=True)
-                new_pop.extend(combined[i] for i in fr_sorted[:remaining])
-                break
-        pop = new_pop
+        pop = _environmental_selection(combined, pop_size)
 
         feas = [r for r in pop if r['ok']]
         best = min(feas, key=lambda r: r['obj']) if feas else None
@@ -488,7 +546,23 @@ def run_nsga2(params, loads, evaluator=None, pop_size=40, n_gen=30,
     pareto_front = [_to_config(r) for r in pareto]
 
     recommended = None
-    reason = "NSGA-II khong tim duoc phuong an kha thi trong pham vi be/khoang cach."
+    # Chẩn đoán khi bệ quá hẹp cho 2 hàng cọc ở khoảng cách 3d — nguyên nhân
+    # hình học phổ biến nhất khiến không có phương án; báo rõ để người dùng biết
+    # cần NỚI kích thước bệ (hoặc giảm tải / tăng đường kính) thay vì loay hoay.
+    d = params.get('D_PILE', 1.0)
+    SAFE_D = params.get('SAFE_D', d)
+    narrow_x = ('L_X' in params) and (params['L_X'] - 2 * SAFE_D < SPACING_MIN_FACTOR * d - 1e-6)
+    narrow_y = ('L_Y' in params) and (params['L_Y'] - 2 * SAFE_D < SPACING_MIN_FACTOR * d - 1e-6)
+    if narrow_x or narrow_y:
+        need = SPACING_MIN_FACTOR * d + 2 * SAFE_D
+        reason = ("Khong co phuong an: be qua hep cho 2 hang coc o khoang cach toi thieu "
+                  "3d=%.2f m (can be rong it nhat ~%.2f m moi phuong). Hay NOI kich thuoc "
+                  "be (L_X/L_Y), giam tai, hoac tang duong kinh." % (SPACING_MIN_FACTOR * d, need))
+    else:
+        reason = ("Khong co phuong an kha thi: da liet ke toan bo luoi trong pham vi be/"
+                  "khoang cach hien tai, moi bo tri deu vuot [Po]/[Ct]/[M]"
+                  + ("/[H]" if (params.get('H_LIMIT', 0) or 0) > 0 else "")
+                  + ". Can noi be, giam tai, hoac tang suc chiu tai/duong kinh.")
     if valid:
         recommended = _to_config(valid[0])
         muc_tieu = "be GON nhat" if secondary != 'pmax' else "Pmax nho nhat"

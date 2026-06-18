@@ -362,6 +362,11 @@ class MainWindow:
             bg="white", fg="#888", font=("Arial", 8), anchor="w",
             justify="left", wraplength=720)
         self.lbl_scope.pack(side=tk.BOTTOM, fill=tk.X, padx=4, pady=(0, 2))
+        # Auto-scale: ghi chú phạm vi tự xuống dòng theo bề rộng panel phải,
+        # tránh chữ bị cắt/đổi bố cục khi người dùng kéo chỉnh layout.
+        right_frame.bind(
+            "<Configure>",
+            lambda e: self.lbl_scope.config(wraplength=max(e.width - 16, 200)))
 
         self.plot_canvas = PlotCanvas(right_frame)
         self.plot_canvas.widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
@@ -894,7 +899,7 @@ class MainWindow:
                 # Chấm phương án gốc (để so sánh) — cùng bộ tải UI
                 orig_res = evaluator(np.array(params['original_coords'], dtype=float))
                 results = run_nsga2(params, loads, evaluator=evaluator,
-                                    pop_size=16, n_gen=10, max_evals=50,
+                                    pop_size=20, n_gen=10, max_evals=120,
                                     secondary=self.var_secondary.get(),
                                     log=self._log_refine)
                 results['_orig_eval'] = (len(params['original_coords']), orig_res)
@@ -924,12 +929,15 @@ class MainWindow:
                 'msg': 'Phuong an goc (MCOC)',
             }
             orig_cfg['ok'] = self._config_fully_ok(orig_cfg)
-        all_mode = self.output_option.get() != "BEST"
-        valid = results.get('all_valid_configs', []) if all_mode else results.get('pareto_front', [])
+        # LUÔN giữ TẤT CẢ phương án chấp nhận được (không chỉ Pareto) để người
+        # dùng so sánh "tiến hóa" + tự chọn theo điều kiện. Radio BEST/ALL chỉ
+        # chi phối khâu XUẤT FILE (save_file), không cắt danh sách trên màn hình.
+        valid = results.get('all_valid_configs', [])
         self.current_config = {
             'recommended': results.get('recommended'),
             'original_config': orig_cfg,
             'all_valid_configs': valid,
+            'pareto_front': results.get('pareto_front', []),
             'all_candidates': [],
             'best_A': results.get('best_A'), 'best_B': results.get('best_B'),
             'reason': results.get('reason', ''),
@@ -1023,11 +1031,25 @@ class MainWindow:
     # TAB 1 - TƯƠNG TÁC: TỐI ƯU MỞ RỘNG (R7/R8 + đổi đường kính + thu bệ)
     # ========================================================================
     def _toggle_ext(self):
-        """Ẩn/hiện phần thân cấu hình mở rộng theo công tắc chính."""
-        if self.var_ext_enable.get():
-            self.frame_ext_body.pack(fill=tk.X)
-        else:
-            self.frame_ext_body.pack_forget()
+        """LUÔN hiện phần thân cấu hình mở rộng để người dùng THẤY chức năng
+        (đổi đường kính, R7/R8, thu bệ) — tránh ẩn khiến không biết chương trình
+        có gì. Công tắc chính chỉ quyết định luồng chạy có dùng mở rộng hay không;
+        khi tắt thì làm mờ các điều khiển con để báo trạng thái rõ ràng."""
+        self.frame_ext_body.pack(fill=tk.X)   # luôn hiện -> dễ khám phá
+        on = self.var_ext_enable.get()
+        self._set_state_recursive(self.frame_ext_body, on)
+
+    def _set_state_recursive(self, widget, enabled):
+        """Bật/mờ đệ quy mọi widget con (ttk dùng state(), tk dùng config)."""
+        for w in widget.winfo_children():
+            try:
+                if isinstance(w, ttk.Widget):
+                    w.state(['!disabled'] if enabled else ['disabled'])
+                else:
+                    w.config(state=('normal' if enabled else 'disabled'))
+            except Exception:
+                pass
+            self._set_state_recursive(w, enabled)
 
     def _diameter_row_dialog(self, title, init=None):
         """Hộp thoại nhập/sửa 1 dòng bảng đường kính. Trả về dict hoặc None.
@@ -1208,7 +1230,7 @@ class MainWindow:
                     return
                 out = run_extended_optimization(
                     params, loads, table, cfg=cfg, d_orig=d_orig, Po_orig=Po_orig,
-                    pop_size=12, n_gen=8, max_evals=40,
+                    pop_size=16, n_gen=8, max_evals=100,
                     secondary=self.var_secondary.get(), log=self._log_refine)
                 self.root.after(0, lambda: self._show_ext_results(out, cfg))
             except Exception as e:
@@ -1246,8 +1268,21 @@ class MainWindow:
 
         if not rec:
             ins("  KHONG co duong kinh nao cho phuong an thoa man R1-R8.")
+            # Vẫn HIỆN phương án gốc để người dùng so sánh / tự điều chỉnh.
+            orig_cfg = out.get('original_config')
+            if orig_cfg is not None:
+                st = "DAT" if orig_cfg.get('ok') else "KHONG DAT"
+                ins("")
+                ins("  PHUONG AN GOC (d=%.3g m): %s | %d coc | Pmax=%.1f T"
+                    % (orig_cfg.get('d_orig', 0), st, orig_cfg['n'], orig_cfg['pmax']))
             self._ext_active = False
-            self.populate_comboboxes({'recommended': None, 'all_valid_configs': []})
+            self.current_config = {
+                'recommended': None, 'original_config': orig_cfg,
+                'all_valid_configs': [], 'all_candidates': [],
+                'reason': 'Khong co phuong an moi thoa R1-R8.',
+            }
+            self._render_results(self.current_config)
+            self.populate_comboboxes(self.current_config)
             return
 
         winner = out['winner']
@@ -1283,13 +1318,16 @@ class MainWindow:
         self._last_ext_out = out         # phục vụ xuất báo cáo (mục 3b + R7/R8)
         self._last_ext_cfg = cfg
 
-        all_mode = self.output_option.get() != "BEST"
+        # LUÔN giữ TẤT CẢ phương án chấp nhận được (không chỉ Pareto) để so sánh
+        # "tiến hóa". Phương án GỐC (đường kính gốc) đã được orchestrator chấm.
         res = winner['result']
-        valid = res.get('all_valid_configs', []) if all_mode else res.get('pareto_front', [])
+        # 'ok' của phương án gốc do orchestrator chấm theo đường kính/[Po] GỐC
+        # (không dùng _config_fully_ok vì params UI đã đổi sang đường kính thắng).
+        orig_cfg = out.get('original_config')
         self.current_config = {
             'recommended': rec,
-            'original_config': None,
-            'all_valid_configs': valid,
+            'original_config': orig_cfg,
+            'all_valid_configs': res.get('all_valid_configs', []),
             'all_candidates': [],
             'best_A': res.get('best_A'), 'best_B': res.get('best_B'),
             'reason': res.get('reason', ''),
