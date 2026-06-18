@@ -105,11 +105,21 @@ class PlotCanvas:
                                       fill=False, label='Giới hạn tâm cọc', zorder=2)
         self.ax.add_patch(safe_rect)
 
-    def _finalize(self, L_X, L_Y, title=None, has_colorbar=False):
-        """Thiết lập trục, lưới, tiêu đề, chú thích chung và vẽ lại canvas."""
-        # Giới hạn trục với lề 1 m quanh bệ, giữ tỉ lệ thật (aspect='equal')
-        self.ax.set_xlim(-L_X / 2 - 1, L_X / 2 + 1)
-        self.ax.set_ylim(-L_Y / 2 - 1, L_Y / 2 + 1)
+    def _finalize(self, L_X, L_Y, title=None, has_colorbar=False, view_extent=None):
+        """Thiết lập trục, lưới, tiêu đề, chú thích chung và vẽ lại canvas.
+
+        view_extent = (hx, hy): nửa bề rộng/cao KHUNG NHÌN CHUNG (đối xứng quanh
+        tâm) dùng cho MỌI phương án -> cùng tỉ lệ pixel/mét khi chuyển phương án,
+        cọc giữ nguyên cỡ, dễ so sánh tiến hóa. None -> khung theo bệ hiện tại.
+        """
+        if view_extent is not None:
+            hx, hy = view_extent
+            self.ax.set_xlim(-hx, hx)
+            self.ax.set_ylim(-hy, hy)
+        else:
+            # Giới hạn trục với lề 1 m quanh bệ, giữ tỉ lệ thật (aspect='equal')
+            self.ax.set_xlim(-L_X / 2 - 1, L_X / 2 + 1)
+            self.ax.set_ylim(-L_Y / 2 - 1, L_Y / 2 + 1)
         self.ax.set_aspect('equal')
         self.ax.grid(True, linestyle=':', alpha=0.5)
         self.ax.set_xlabel('Trục X (m)')
@@ -133,10 +143,14 @@ class PlotCanvas:
     # ========================================================================
     # Vẽ mô phỏng bố trí cọc
     # ========================================================================
-    def draw_simulation(self, coords, params, forces=None, m_forces=None):
-        """Vẽ mặt bằng bố trí cọc; tô màu theo lực P nếu có nội lực kèm theo."""
+    def draw_simulation(self, coords, params, forces=None, m_forces=None, view_extent=None):
+        """Vẽ mặt bằng bố trí cọc; tô màu theo lực P nếu có nội lực kèm theo.
+
+        view_extent: khung nhìn chung (hx, hy) để mọi phương án cùng tỉ lệ — xem
+        _finalize. None -> khung theo bệ phương án hiện tại.
+        """
         # Ghi nhớ để VẼ LẠI khi cửa sổ đổi kích thước (auto-scale)
-        self._redraw_cb = lambda: self.draw_simulation(coords, params, forces, m_forces)
+        self._redraw_cb = lambda: self.draw_simulation(coords, params, forces, m_forces, view_extent)
         # Xóa nội dung cũ, tạo lại axes sạch cho lần vẽ mới
         self.fig.clf()
         self.ax = self.fig.add_subplot(111)
@@ -157,7 +171,7 @@ class PlotCanvas:
 
         # Không có cọc → chỉ vẽ bệ trống
         if coords is None or len(coords) == 0:
-            self._finalize(L_X, L_Y)
+            self._finalize(L_X, L_Y, view_extent=view_extent)
             return
 
         coords_arr = np.array(coords, dtype=float)
@@ -174,7 +188,7 @@ class PlotCanvas:
                 self.ax.add_patch(circle)
                 self.ax.text(x, y, str(i + 1), ha='center', va='center',
                              color='white', fontweight='bold', fontsize=10, zorder=4)
-            self._finalize(L_X, L_Y, title=f"Bố trí {n_piles} cọc")
+            self._finalize(L_X, L_Y, title=f"Bố trí {n_piles} cọc", view_extent=view_extent)
             return
 
         # ── Có nội lực: vẽ heatmap ───────────────────────────────────────────
@@ -268,7 +282,7 @@ class PlotCanvas:
             title += f"  ({n_pull} cọc nhổ)"
 
         # Bước 6: hoàn thiện trục/lưới/chú thích và vẽ lại canvas
-        self._finalize(L_X, L_Y, title=title, has_colorbar=True)
+        self._finalize(L_X, L_Y, title=title, has_colorbar=True, view_extent=view_extent)
 
     # ========================================================================
     # Vẽ bảng kiểm toán ràng buộc (chuẩn tư vấn thiết kế)
@@ -307,10 +321,14 @@ class PlotCanvas:
         tcol = 'navy' if data['status'] == 'ĐẠT' else '#b03a2e'
         ax.set_title(title, fontsize=9.5 * fs, fontweight='bold', color=tcol, pad=8)
 
+        # LỀ CỐ ĐỊNH (KHÔNG dùng tight_layout): bảng vẽ bằng tọa độ trục [0,1].
+        # tight_layout gọi lặp lại (mỗi lần đổi tổ hợp / resize) làm CO DỒN lề phải
+        # tích lũy -> trục co về dải mảnh. Đặt lề tường minh để bảng luôn đầy khung.
+        self.fig.subplots_adjust(left=0.03, right=0.99, top=0.93, bottom=0.03)
+
         if not rows:
             ax.text(0.5, 0.5, "Chưa có dữ liệu tổ hợp tải trọng để kiểm toán.",
                     ha='center', va='center', fontsize=11 * fs, color='gray')
-            self.fig.tight_layout()
             self.canvas.draw_idle()
             return
 
@@ -392,5 +410,5 @@ class PlotCanvas:
         ax.text(0.0, bottom - 0.115, "   |   ".join(data.get('geom_summary', [])),
                 ha='left', va='top', fontsize=8 * fs, color='#222', fontweight='bold')
 
-        self.fig.tight_layout()
+        # KHÔNG tight_layout ở đây (đã đặt lề cố định ở trên) — tránh co dồn tích lũy.
         self.canvas.draw_idle()

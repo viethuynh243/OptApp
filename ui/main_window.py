@@ -103,6 +103,10 @@ class MainWindow:
         self._ext_active = False     # phiên kết quả hiện tại là của luồng mở rộng?
         self._ext_hlimit = 0.0       # [H] của đường kính thắng (cho audit R7)
 
+        # --- Xử lý BỆ CHẬT (tùy chọn, do người dùng kiểm soát — KHÔNG đổi mặc định) ---
+        self.var_min_spacing = tk.StringVar(value='3.0')   # hệ số k/c tối thiểu ×d
+        self.var_suggest_cap = tk.BooleanVar(value=True)   # đề xuất nới bệ khi vô nghiệm
+
         self.loads = []
         self.current_config = None
 
@@ -137,7 +141,7 @@ class MainWindow:
 
         # Left Panel — chia DỌC: (trên) nút IO + vùng nhập liệu CUỘN ĐƯỢC + nút Chạy;
         # (dưới) ô "Kết quả Đánh giá" tách riêng, kéo sash để đổi cỡ nên không bị bóp.
-        left_frame = tk.Frame(main_paned, width=400)
+        left_frame = tk.Frame(main_paned, width=440)
         main_paned.add(left_frame, weight=0)
 
         left_paned = ttk.PanedWindow(left_frame, orient=tk.VERTICAL)
@@ -187,32 +191,39 @@ class MainWindow:
         frame_geom = tk.LabelFrame(inner, text="Thông số Bài toán", padx=10, pady=5)
         frame_geom.pack(fill=tk.X, pady=5)
 
-        labels_1 = {"L_X": "Rộng bệ Lx (m)", "L_Y": "Dài bệ Ly (m)",
-                    "D_PILE": "Đ.kính cọc d (m)", "P_LIMIT": "Sức nén [Po] (T)",
-                    "P_TENSION": "Sức nhổ [Ct] (T)", "M_LIMIT": "Sức uốn [M] (T.m)"}
+        # Bố cục 2 CỘT CÂN ĐỐI: trái = KÍCH THƯỚC hình học, phải = SỨC CHỊU TẢI.
+        # Mỗi nhãn 1 cột + ô nhập 1 cột co giãn (sticky=ew) nên ô [Po]/[Ct]/[M]
+        # LUÔN hiện đủ, không bị cắt dù panel hẹp.
+        geom_fields = [("L_X", "Rộng bệ Lx (m)"), ("L_Y", "Dài bệ Ly (m)"),
+                       ("D_PILE", "Đ.kính cọc d (m)")]
+        cap_fields = [("P_LIMIT", "Sức nén [Po] (T)"), ("P_TENSION", "Sức nhổ [Ct] (T)"),
+                      ("M_LIMIT", "Sức uốn [M] (T.m)")]
         self._param_entries = {}
-        row = 0
-        col = 0
-        for k, text in labels_1.items():
-            ttk.Label(frame_geom, text=text).grid(row=row, column=col*2, sticky="w", padx=2)
-            entry = ttk.Entry(frame_geom, textvariable=self.params[k], width=10)
-            entry.grid(row=row, column=col*2+1, pady=2, padx=2)
-            self._param_entries[k] = entry
-            row += 1
-            if row > 2:
-                row = 0
-                col += 1
+        for r, (k, text) in enumerate(geom_fields):
+            ttk.Label(frame_geom, text=text).grid(row=r, column=0, sticky="w", padx=(2, 4), pady=2)
+            e = ttk.Entry(frame_geom, textvariable=self.params[k], width=9)
+            e.grid(row=r, column=1, sticky="ew", padx=(0, 8), pady=2)
+            self._param_entries[k] = e
+        for r, (k, text) in enumerate(cap_fields):
+            ttk.Label(frame_geom, text=text).grid(row=r, column=2, sticky="w", padx=(2, 4), pady=2)
+            e = ttk.Entry(frame_geom, textvariable=self.params[k], width=9)
+            e.grid(row=r, column=3, sticky="ew", padx=(0, 2), pady=2)
+            self._param_entries[k] = e
+        # Cho 2 cột ô nhập co giãn theo bề rộng panel (chia đều), nhãn giữ cố định.
+        frame_geom.columnconfigure(1, weight=1, minsize=60)
+        frame_geom.columnconfigure(3, weight=1, minsize=60)
 
         # Ghi chú đơn vị — tránh nhầm giữa tải trọng (kN) và sức chịu tải (Tấn)
         ttk.Label(frame_geom,
                   text="Đơn vị (theo MCOC): lực = Tấn (T); momen = T.m. Áp dụng cho cả tải trọng và [Po]/[Ct]/[M].",
-                  foreground="#888").grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
+                  foreground="#888", wraplength=380, justify="left").grid(
+            row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
         # Cảnh báo: [Po] trong file input MCOC chỉ là MẶC ĐỊNH (thường 500) — phải
         # nhập sức chịu tải THẬT theo đường kính (vd cọc d=2.0 m ~ 2000 T), nếu
         # không mọi phương án sẽ "trượt" và không tìm được lời giải.
         ttk.Label(frame_geom,
                   text="⚠ [Po]/[Ct]/[M] trong file input chỉ là MẶC ĐỊNH — hãy nhập sức chịu tải THẬT theo đường kính cọc.",
-                  foreground="#b03a2e", wraplength=360, justify="left").grid(
+                  foreground="#b03a2e", wraplength=380, justify="left").grid(
             row=4, column=0, columnspan=4, sticky="w", pady=(2, 0))
 
         # Loads
@@ -270,33 +281,23 @@ class MainWindow:
         ttk.Radiobutton(row_sec, text="An toàn (giảm Pmax)", variable=self.var_secondary,
                         value="pmax").pack(side=tk.LEFT, padx=10)
 
-        # --- Cấu hình MCOC (bắt buộc — mọi phương án được chấm bằng MCOC chính xác) ---
-        frame_mcoc = tk.LabelFrame(inner, text="Cấu hình MCOC (bắt buộc)", padx=10, pady=5)
-        frame_mcoc.pack(fill=tk.X, pady=5)
+        # Xử lý bệ chật (tùy chọn): k/c tối thiểu + đề xuất nới bệ. Mặc định 3d và
+        # BẬT gợi ý — không đổi thuật toán, chỉ là lựa chọn người dùng kiểm soát.
+        row_sp = tk.Frame(frame_run); row_sp.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(row_sp, text="K/c tối thiểu:").pack(side=tk.LEFT)
+        ttk.Combobox(row_sp, textvariable=self.var_min_spacing,
+                     values=['3.0', '2.75', '2.5'], width=5, state="readonly").pack(side=tk.LEFT, padx=2)
+        ttk.Label(row_sp, text="×d", foreground="#888").pack(side=tk.LEFT)
+        ttk.Checkbutton(row_sp, text="Đề xuất nới bệ khi bệ chật",
+                        variable=self.var_suggest_cap).pack(side=tk.LEFT, padx=(12, 0))
 
-        row_exe = tk.Frame(frame_mcoc)
-        row_exe.pack(fill=tk.X, pady=2)
-        ttk.Label(row_exe, text="MCOC Batch:").pack(side=tk.LEFT)
-        self.txt_exe_path = ttk.Entry(row_exe, textvariable=self.params['exe_path'])
-        self.txt_exe_path.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
-        ttk.Button(row_exe, text="...", width=3, command=self.browse_exe).pack(side=tk.LEFT)
-
-        self.lbl_template = ttk.Label(frame_mcoc, text="File input gốc: (chưa có)", foreground="gray")
-        self.lbl_template.pack(anchor="w", pady=(2, 0))
-        ttk.Label(frame_mcoc,
-                  text="Mọi phương án đều được chấm bằng MCOC (chính xác) — cần MCOC Batch + file input MCOC gốc.",
-                  foreground="#888").pack(anchor="w")
-        # Giữ biến để tương thích (không dùng trong chế độ NSGA-II + MCOC)
-        self.var_refine_mode = tk.StringVar(value="full")
-
-        # --- Tối ưu MỞ RỘNG (tùy chọn): R7/R8 + đổi đường kính + thu bệ ---
-        frame_ext = tk.LabelFrame(inner, text="Tối ưu mở rộng (tùy chọn)", padx=10, pady=5)
-        frame_ext.pack(fill=tk.X, pady=5)
-        ttk.Checkbutton(frame_ext,
+        # --- TỐI ƯU MỞ RỘNG: gộp chung vào "Điều Khiển Tối Ưu" (ngăn bằng đường kẻ) ---
+        ttk.Separator(frame_run, orient="horizontal").pack(fill=tk.X, pady=(8, 4))
+        ttk.Checkbutton(frame_run,
                         text="Bật tối ưu mở rộng (đổi đường kính cọc + thu bệ)",
                         variable=self.var_ext_enable,
                         command=self._toggle_ext).pack(anchor="w")
-        self.frame_ext_body = tk.Frame(frame_ext)
+        self.frame_ext_body = tk.Frame(frame_run)
 
         row_chk = tk.Frame(self.frame_ext_body); row_chk.pack(fill=tk.X, pady=(2, 0))
         ttk.Checkbutton(row_chk, text="R7 lực ngang [H]",
@@ -319,6 +320,25 @@ class MainWindow:
                                      foreground="#888")
         self.lbl_ext_dia.pack(side=tk.LEFT, padx=6)
         self._toggle_ext()   # ẩn body khi chưa bật
+
+        # --- Cấu hình MCOC (bắt buộc — mọi phương án được chấm bằng MCOC chính xác) ---
+        frame_mcoc = tk.LabelFrame(inner, text="Cấu hình MCOC (bắt buộc)", padx=10, pady=5)
+        frame_mcoc.pack(fill=tk.X, pady=5)
+
+        row_exe = tk.Frame(frame_mcoc)
+        row_exe.pack(fill=tk.X, pady=2)
+        ttk.Label(row_exe, text="MCOC Batch:").pack(side=tk.LEFT)
+        self.txt_exe_path = ttk.Entry(row_exe, textvariable=self.params['exe_path'])
+        self.txt_exe_path.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=4)
+        ttk.Button(row_exe, text="...", width=3, command=self.browse_exe).pack(side=tk.LEFT)
+
+        self.lbl_template = ttk.Label(frame_mcoc, text="File input gốc: (chưa có)", foreground="gray")
+        self.lbl_template.pack(anchor="w", pady=(2, 0))
+        ttk.Label(frame_mcoc,
+                  text="Mọi phương án đều được chấm bằng MCOC (chính xác) — cần MCOC Batch + file input MCOC gốc.",
+                  foreground="#888").pack(anchor="w")
+        # Giữ biến để tương thích (không dùng trong chế độ NSGA-II + MCOC)
+        self.var_refine_mode = tk.StringVar(value="full")
 
         # ── Pane dưới: ô KẾT QUẢ ĐÁNH GIÁ (tách riêng, kéo sash để đổi cỡ) ──
         res_pane = tk.LabelFrame(left_paned, text="Kết quả Đánh giá", padx=8, pady=4)
@@ -593,6 +613,11 @@ class MainWindow:
         if hasattr(self, 'orig_mymax'): d['orig_mymax'] = self.orig_mymax
         if hasattr(self, 'result_filepath'): d['result_filepath'] = self.result_filepath
         d['SAFE_D'] = d.get('D_PILE', 1.2)
+        # Hệ số k/c tối thiểu do người dùng chọn (mặc định 3.0 = giữ nguyên TCVN).
+        try:
+            d['SPACING_MIN_FACTOR'] = float(self.var_min_spacing.get())
+        except (ValueError, AttributeError):
+            d['SPACING_MIN_FACTOR'] = 3.0
         return d
 
     def browse_exe(self):
@@ -743,6 +768,12 @@ class MainWindow:
             self.txt_result.delete(1.0, tk.END)
             self.cb_config.set('')
             self.cb_config['values'] = []
+            # Xóa luôn ô Tổ hợp + dải KPI (số cọc/hệ số sử dụng/trạng thái) — nếu
+            # không, chúng giữ giá trị phương án cũ dù đã làm mới.
+            self.cb_load_case.set('')
+            self.cb_load_case['values'] = []
+            self.lbl_kpi.config(text="", fg="#1a3c5e")
+            self.view_mode.set('layout')
             self.plot_canvas.clear()   # vẽ trắng như lúc mới mở
 
     def save_file(self):
@@ -942,6 +973,15 @@ class MainWindow:
                 'mxmax': r0.get('mxmax', 0), 'mymax': r0.get('mymax', 0),
                 'msg': 'Phuong an goc (MCOC)',
             }
+            # Bệ gốc đủ chứa cọc gốc (kể cả khi ô L_X/L_Y bị thu nhỏ hơn) — tránh
+            # cọc tràn ra ngoài bệ khi vẽ. Để trống thì update_simulation dùng ô UI.
+            pco = np.asarray(self.original_coords, float)
+            if pco.ndim == 2 and len(pco):
+                sd = self._pget('D_PILE') or 1.2
+                from core.ext.cap_resize import recommend_cap_size
+                flx, fly = recommend_cap_size(self.original_coords, sd, 0.1)
+                orig_cfg['cap_lx'] = max(self._pget('L_X') or 0.0, flx)
+                orig_cfg['cap_ly'] = max(self._pget('L_Y') or 0.0, fly)
             orig_cfg['ok'] = self._config_fully_ok(orig_cfg)
         # LUÔN giữ TẤT CẢ phương án chấp nhận được (không chỉ Pareto) để người
         # dùng so sánh "tiến hóa" + tự chọn theo điều kiện. Radio BEST/ALL chỉ
@@ -958,7 +998,47 @@ class MainWindow:
         }
         self.txt_result.delete(1.0, tk.END)
         self._render_results(self.current_config, results.get('n_evals'))
+        self._maybe_suggest_cap(self.current_config)
         self.populate_comboboxes(self.current_config)
+
+    def _maybe_suggest_cap(self, results):
+        """Khi KHÔNG có phương án (bệ chật) và người dùng bật 'Đề xuất nới bệ',
+        in gợi ý: bệ hiện chứa tối đa bao nhiêu cọc + bệ tối thiểu khả thi.
+
+        TÙY CHỌN, do người dùng kiểm soát — chỉ trình bày số liệu, KHÔNG tự áp
+        dụng và KHÔNG đổi thuật toán tối ưu. Dùng mô hình bệ cứng (không gọi MCOC).
+        """
+        if results.get('recommended'):
+            return
+        if not getattr(self, 'var_suggest_cap', None) or not self.var_suggest_cap.get():
+            return
+        if not self.loads:
+            return
+        try:
+            from core.cap_suggest import cap_max_piles, suggest_min_cap
+            params = self.get_params_dict()
+            cm = cap_max_piles(params)
+            sug = suggest_min_cap(params, self.loads)
+        except Exception:
+            return
+        ins = lambda s="": self.txt_result.insert(tk.END, s + "\n")
+        ins("")
+        ins("-" * 60)
+        ins("  GOI Y XU LY BE CHAT (tham khao — chua ap dung)")
+        ins("-" * 60)
+        if cm['n']:
+            ins("  Be hien tai %g x %g m chua TOI DA %d coc (luoi %dx%d @ k/c >= %.2f m)."
+                % (params.get('L_X', 0), params.get('L_Y', 0), cm['n'],
+                   cm['nx'], cm['ny'], cm['s_min']))
+        if sug:
+            ins("  De dat o k/c toi thieu, NOI be toi thieu ~ %.1f x %.1f m"
+                % (sug['cap_lx'], sug['cap_ly']))
+            ins("     (luoi %dx%d = %d coc, Pmax ~ %.0f T <= [Po])."
+                % (sug['nx'], sug['ny'], sug['n'], sug['pmax']))
+            ins("  Hoac: tang duong kinh coc (luong mo rong), hoac giam k/c toi")
+            ins("  thieu neu loai coc cho phep (o 'K/c toi thieu ×d').")
+        else:
+            ins("  Chua tim duoc be kha thi trong gioi han quet — xem lai [Po]/tai.")
 
     def _render_results(self, results, n_evals=None):
         """In kết quả ra ô 'Kết quả Đánh giá' theo bố cục gọn, kèm bảng tọa độ."""
@@ -984,6 +1064,8 @@ class MainWindow:
             util = f"   ({rec['pmax']/P_LIMIT*100:.1f}% [Po])" if P_LIMIT > 0 else ""
             ins(f"  Pmax        : {rec['pmax']:.2f} T{util}")
             ins(f"  Pmin        : {rec['pmin']:.2f} T")
+            if rec.get('cap_lx') and rec.get('cap_ly'):
+                ins(f"  Kich thuoc be: {rec['cap_lx']:g} x {rec['cap_ly']:g} m")
             if M_LIMIT > 0:
                 ins(f"  Mmax        : {max(rec.get('mxmax',0), rec.get('mymax',0)):.2f} T.m")
             ins(f"  Ly do       : {results.get('reason', '')}")
@@ -1005,6 +1087,8 @@ class MainWindow:
             ins("-" * W)
             ins(f"  So coc = {orig['n']}    Pmax = {orig['pmax']:.2f} T   (Po = {P_LIMIT:.0f} T)")
             ins(f"  Pmin = {orig['pmin']:.2f} T")
+            if orig.get('cap_lx') and orig.get('cap_ly'):
+                ins(f"  Kich thuoc be goc: {orig['cap_lx']:g} x {orig['cap_ly']:g} m")
             ins("")
 
         show = results.get('all_valid_configs', [])
@@ -1298,6 +1382,7 @@ class MainWindow:
                 'reason': 'Khong co phuong an moi thoa R1-R8.',
             }
             self._render_results(self.current_config)
+            self._maybe_suggest_cap(self.current_config)
             self.populate_comboboxes(self.current_config)
             return
 
@@ -1337,6 +1422,19 @@ class MainWindow:
         # LUÔN giữ TẤT CẢ phương án chấp nhận được (không chỉ Pareto) để so sánh
         # "tiến hóa". Phương án GỐC (đường kính gốc) đã được orchestrator chấm.
         res = winner['result']
+        # Mỗi phương án thay thế cũng mang bệ RIÊNG của nó (thu vừa khít nếu
+        # đang bật resize, ngược lại giữ bệ gốc) để so sánh tiến hóa kích thước.
+        from core.ext.cap_resize import recommend_cap_size
+        for vc in res.get('all_valid_configs', []):
+            if vc.get('cap_lx') and vc.get('cap_ly'):
+                continue
+            vc_coords = vc.get('coords')
+            has_coords = vc_coords is not None and len(np.asarray(vc_coords)) > 0
+            if cap['applied'] and has_coords:
+                lx, ly = recommend_cap_size(vc_coords, cap['safe_d'], cap['round_to'])
+                vc['cap_lx'], vc['cap_ly'] = lx, ly
+            else:
+                vc['cap_lx'], vc['cap_ly'] = cap['old_LX'], cap['old_LY']
         # 'ok' của phương án gốc do orchestrator chấm theo đường kính/[Po] GỐC
         # (không dùng _config_fully_ok vì params UI đã đổi sang đường kính thắng).
         orig_cfg = out.get('original_config')
@@ -1491,6 +1589,28 @@ class MainWindow:
         forces = None
         params_dict = self.get_params_dict()
 
+        # Bệ của phương án nào PHẢI đi theo phương án đó: nếu config mang theo
+        # kích thước bệ riêng (vd phương án gốc giữ bệ gốc, phương án đề xuất
+        # mang bệ đã thu), ưu tiên dùng nó thay cho L_X/L_Y trên UI — nhờ vậy
+        # mặt bằng + bảng audit R4 phản ánh đúng tiến hóa kích thước bệ.
+        cap_lx = selected_cfg.get('cap_lx'); cap_ly = selected_cfg.get('cap_ly')
+        if cap_lx and cap_ly:
+            params_dict['L_X'] = float(cap_lx)
+            params_dict['L_Y'] = float(cap_ly)
+        # ...và ĐƯỜNG KÍNH / sức chịu cũng đi theo phương án: phương án gốc audit
+        # R3 (3d–6d), R4 (mép ≥ d), R5/R6 theo d/[Po]/[Ct]/[M] GỐC — không theo
+        # đường kính thắng (tránh báo KHÔNG ĐẠT oan khi UI đã đổi sang d thắng).
+        if selected_cfg.get('d_orig'):
+            params_dict['D_PILE'] = float(selected_cfg['d_orig'])
+            params_dict['SAFE_D'] = float(selected_cfg.get('safe_d_orig')
+                                          or selected_cfg['d_orig'])
+            if selected_cfg.get('Po_orig'):
+                params_dict['P_LIMIT'] = float(selected_cfg['Po_orig'])
+            if selected_cfg.get('ct_orig') is not None:
+                params_dict['P_TENSION'] = float(selected_cfg['ct_orig'])
+            if selected_cfg.get('m_orig') is not None:
+                params_dict['M_LIMIT'] = float(selected_cfg['m_orig'])
+
         # Hệ số hiệu chỉnh: ưu tiên khớp Pmax THỰC (MCOC) của phương án đang xem,
         # để lực vẽ trên canvas đồng nhất với kết quả ở phần kết luận.
         calibration_factor = 1.0
@@ -1520,7 +1640,36 @@ class MainWindow:
         if self.view_mode.get() == "audit":
             self.plot_canvas.draw_constraint_view(cdata)
         else:
-            self.plot_canvas.draw_simulation(coords, params_dict, forces, m_forces=(mxmax, mymax))
+            # Khung nhìn CHUNG cho mọi phương án -> cùng tỉ lệ khi chuyển phương án.
+            view_extent = self._global_view_extent(params_dict)
+            self.plot_canvas.draw_simulation(coords, params_dict, forces,
+                                             m_forces=(mxmax, mymax), view_extent=view_extent)
+
+    def _global_view_extent(self, params, margin=1.0):
+        """Nửa bề rộng/cao KHUNG NHÌN CHUNG (đối xứng quanh tâm) bao mọi phương án.
+
+        Lấy max bao của BỆ + CỌC qua tất cả phương án (gốc, đề xuất, các phương án
+        đạt) để khi chuyển phương án, tỉ lệ pixel/mét KHÔNG đổi — cọc giữ nguyên
+        cỡ, kỹ thuật viên dễ quan sát thay đổi. Trả về (hx, hy) đã cộng lề."""
+        cc = self.current_config or {}
+        cfgs = []
+        if cc.get('original_config'): cfgs.append(cc['original_config'])
+        if cc.get('recommended'): cfgs.append(cc['recommended'])
+        cfgs += cc.get('all_valid_configs', []) or []
+        d = params.get('D_PILE', 1.2) or 1.2
+        hx = hy = 0.0
+        for cfg in cfgs:
+            lx = cfg.get('cap_lx') or params.get('L_X', 0) or 0
+            ly = cfg.get('cap_ly') or params.get('L_Y', 0) or 0
+            hx = max(hx, float(lx) / 2.0); hy = max(hy, float(ly) / 2.0)
+            co = np.asarray(cfg.get('coords', []), float)
+            if co.ndim == 2 and len(co):
+                hx = max(hx, float(np.max(np.abs(co[:, 0]))) + d / 2.0)
+                hy = max(hy, float(np.max(np.abs(co[:, 1]))) + d / 2.0)
+        if hx <= 0 or hy <= 0:   # phòng khi thiếu dữ liệu: lùi về bệ hiện tại
+            hx = (params.get('L_X', 6.0) or 6.0) / 2.0
+            hy = (params.get('L_Y', 9.0) or 9.0) / 2.0
+        return hx + margin, hy + margin
 
     def _config_fully_ok(self, cfg):
         """Phương án ĐẠT ĐẦY ĐỦ (R3/R4 hình học + R5/R5b/R6/R8 lực) — trả 1 boolean
@@ -1553,7 +1702,10 @@ class MainWindow:
                 cfg.get('sx', 0), cfg.get('sy', 0), coords):
             if _v < s_min_req - 1e-3 or (_chk_up and _v > s_max_req + 1e-3):
                 ok = False
-        Lx = params.get('L_X', 0) or 0; Ly = params.get('L_Y', 0) or 0
+        # R4 mép bệ: dùng bệ RIÊNG của phương án (cap_lx/cap_ly) nếu có — khớp với
+        # mặt bằng + header; tránh báo R4 oan khi ô L_X/L_Y trên UI đã bị thu nhỏ.
+        Lx = cfg.get('cap_lx') or params.get('L_X', 0) or 0
+        Ly = cfg.get('cap_ly') or params.get('L_Y', 0) or 0
         if Lx and Ly:
             if (float(np.max(np.abs(coords[:, 0]))) + c_min > Lx / 2 + 1e-3 or
                     float(np.max(np.abs(coords[:, 1]))) + c_min > Ly / 2 + 1e-3):

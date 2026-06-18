@@ -569,9 +569,14 @@ def run_nsga2(params, loads, evaluator=None, pop_size=40, n_gen=30,
                   "3d=%.2f m (can be rong it nhat ~%.2f m moi phuong). Hay NOI kich thuoc "
                   "be (L_X/L_Y), giam tai, hoac tang duong kinh." % (SPACING_MIN_FACTOR * d, need))
     else:
+        # Lượng hóa sức chứa bệ hiện tại (chẩn đoán — KHÔNG đổi thuật toán).
+        from core.cap_suggest import cap_max_piles
+        cm = cap_max_piles(params)
         reason = ("Khong co phuong an kha thi: da liet ke toan bo luoi trong pham vi be/"
                   "khoang cach hien tai, moi bo tri deu vuot [Po]/[Ct]/[M]"
                   + ("/[H]" if (params.get('H_LIMIT', 0) or 0) > 0 else "")
+                  + (". Be hien tai chua toi da %d coc (luoi %dx%d o k/c >=%.2f m)"
+                     % (cm['n'], cm['nx'], cm['ny'], cm['s_min']) if cm['n'] else "")
                   + ". Can noi be, giam tai, hoac tang suc chiu tai/duong kinh.")
     if valid:
         recommended = _to_config(valid[0])

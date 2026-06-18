@@ -3,6 +3,41 @@
 Tất cả thay đổi đáng kể của ứng dụng. Phiên bản theo [SemVer](https://semver.org/lang/vi/).
 Nguồn version duy nhất: `core/version.py`.
 
+## [1.3.0] — 2026-06-18
+
+### Tính năng lớn — Tối ưu MỞ RỘNG (gói `core/ext/`)
+- **Quét nhiều đường kính cọc**: khai báo "Bảng đường kính" (mỗi `d` có `[Po]/[Ct]/[M]/[H]` riêng); chương trình patch tiết diện thật (Fo, Jo, Po) vào file MCOC rồi chấm chính xác từng đường kính.
+- **Chọn toàn cục** đường kính thắng theo **hàm chi phí vật liệu** (số cọc × diện tích tiết diện), đồng hạng thì ít cọc hơn.
+- **Tự thu bệ** (cap_resize) theo TCVN 10304:2014: bệ vừa khít cọc (mép ≥ d), làm tròn bội số thi công; báo "tiết kiệm diện tích bệ %".
+- ⇒ Tối ưu đồng thời **bố trí + đường kính + kích thước bệ**, không chỉ bố trí.
+
+### Ràng buộc: R1–R6 → **R1–R8**
+- **R7 lực ngang** `Hmax ≤ [H]` và **R8 tương tác P–M** `N/[Po] + M/[M] ≤ 1.0` (bật ở luồng mở rộng; không sửa lõi — dùng cờ context manager). Bảng audit + báo cáo PDF/MD thành **R1–R8** (thêm cột H_max).
+
+### So sánh "tiến hóa" giữa các phương án
+- **Mỗi phương án mang bệ / đường kính / sức chịu RIÊNG**: phương án gốc vẽ & audit theo bệ + d gốc; phương án đề xuất theo bệ đã thu + d thắng.
+- **Khung nhìn CHUNG**: mọi phương án **cùng tỉ lệ** khi chuyển (cọc giữ nguyên cỡ) — dễ quan sát thay đổi.
+- **Bệ gốc luôn đủ chứa cọc gốc** (`max(ô L_X/L_Y, bệ vừa khít)`), không để cọc tràn ra ngoài khi ô đã bị thu.
+
+### Xử lý BỆ CHẬT (tùy chọn người dùng — không đổi mặc định thuật toán)
+- **Lượng hóa** khi vô nghiệm: bệ hiện chứa tối đa N cọc (lưới nx×ny @ k/c).
+- **Đề xuất nới bệ** tối thiểu (`core/cap_suggest.py`): lưới ≥2×2 ít cọc nhất đạt lực + bệ nhỏ nhất chứa nó (checkbox, mặc định bật).
+- **Tùy chỉnh k/c tối thiểu** `3.0 / 2.75 / 2.5 ×d` (qua `SPACING_MIN_FACTOR`; thiếu/≤0 → giữ 3d).
+
+### Giao diện (UI/UX)
+- Gộp khung **"Tối ưu mở rộng" vào "Điều Khiển Tối Ưu"**.
+- "Thông số Bài toán" bố cục **2 cột cân đối** (kích thước | sức chịu) — ô `[Po]/[Ct]/[M]` luôn hiện đủ, không bị cắt.
+- **"Làm mới" sạch hoàn toàn**: xóa cả dải KPI + ô Tổ hợp + về chế độ Mặt bằng.
+
+### Sửa lỗi
+- **Bảng R1–R8 vẽ vỡ thành dải mảnh** khi đổi tổ hợp/kéo cửa sổ — do `tight_layout` co dồn lề tích lũy; nay đặt **lề cố định** (`plot_canvas.draw_constraint_view`).
+- **Phương án gốc vẽ trong bệ đã thu** (cọc tràn ngoài) + mâu thuẫn "ĐẠT/KHÔNG ĐẠT" — nay bệ gốc đủ chứa cọc, audit R4 dùng bệ riêng → trạng thái nhất quán.
+
+### Tài liệu & kiểm thử
+- **`docs/SO_TAY_VAN_HANH.md`** (sổ tay toàn bộ chức năng) + **`docs/HUONG_DAN_NHANH.md`** (làm theo từng bước với số liệu thật).
+- **Vault Obsidian** quản lý dự án (ADR, concept, engine, module).
+- Test/harness mới: `tests/test_ext.py`, `test_cap_suggest.py`, `validate_mcoc.py`, `validate_method.py`, và các harness lái GUI / duyệt bộ mẫu.
+
 ## [1.2.0] — 2026-06-16
 
 ### Giao diện (UI/UX)

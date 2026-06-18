@@ -130,6 +130,15 @@ def test_orchestrator():
     safe_d = cap['safe_d']
     assert np.max(np.abs(coords[:, 0])) + safe_d <= cap['new_LX'] / 2 + 1e-6
     assert np.max(np.abs(coords[:, 1])) + safe_d <= cap['new_LY'] / 2 + 1e-6
+    # Be cua moi phuong an PHAI di theo phuong an do (so sanh tien hoa):
+    #  - de xuat mang be DA THU (vi cfg.cap_resize mac dinh = True)
+    assert abs(rec['cap_lx'] - cap['new_LX']) < 1e-9
+    assert abs(rec['cap_ly'] - cap['new_LY']) < 1e-9
+    #  - phuong an goc GIU be GOC (khong lay be da thu cua phuong an thang)
+    orig = out['original_config']
+    assert orig is not None
+    assert abs(orig['cap_lx'] - params['L_X']) < 1e-9
+    assert abs(orig['cap_ly'] - params['L_Y']) < 1e-9
     print("[OK] orchestrator: d=%.3f, %d coc, Pmax=%.1f, be %.2fx%.2f -> %.2fx%.2f"
           % (dwin, rec['n'], rec['pmax'], cap['old_LX'], cap['old_LY'],
              cap['new_LX'], cap['new_LY']))

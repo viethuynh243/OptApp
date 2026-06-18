@@ -48,8 +48,15 @@ def get_h_limit(params):
 
 
 def effective_min_spacing(params):
-    """Khoảng cách tim-tim nhỏ nhất hiệu dụng = max(3d, d + thông thủy)."""
+    """Khoảng cách tim-tim nhỏ nhất hiệu dụng = max(hệ_số·d, d + thông thủy).
+
+    Hệ số mặc định = SPACING_MIN_FACTOR (3d, theo tiêu chuẩn). Người dùng có thể
+    GHI ĐÈ qua params['SPACING_MIN_FACTOR'] (vd cọc khoan nhồi 2.5d) — TÙY CHỌN,
+    không đổi mặc định thuật toán: thiếu khóa này thì vẫn dùng 3d.
+    """
     d = params.get('D_PILE', DEFAULTS['D_PILE'])
-    base = SPACING_MIN_FACTOR * d
+    factor = params.get('SPACING_MIN_FACTOR', None)
+    factor = float(factor) if (factor and factor > 0) else SPACING_MIN_FACTOR
+    base = factor * d
     clear = params.get('CLEAR_MIN', 0.0) or 0.0
     return max(base, d + clear) if clear > 0 else base

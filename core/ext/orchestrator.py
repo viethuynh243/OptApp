@@ -51,11 +51,29 @@ def _evaluate_original(params, loads, table, d_orig, Po_orig,
     except Exception as e:
         log("  CANH BAO: khong cham duoc phuong an goc bang MCOC: %s" % e)
         return None
+    # Bệ gốc = max(ô L_X/L_Y hiện tại, bệ vừa khít cọc gốc) để cọc gốc LUÔN nằm
+    # trong bệ (kể cả khi ô đã bị thu ở lần chạy trước).
+    from core.ext.cap_resize import recommend_cap_size
+    _safe_d_o = float(params.get('SAFE_D', d_orig) or d_orig)
+    _fit_lx, _fit_ly = recommend_cap_size(orig_coords, _safe_d_o, 0.1)
+    _orig_cap_lx = max(float(params.get('L_X', 0.0) or 0.0), _fit_lx)
+    _orig_cap_ly = max(float(params.get('L_Y', 0.0) or 0.0), _fit_ly)
     return {'type': 'Goc', 'nx': 0, 'ny': 0, 'sx': 0, 'sy': 0,
             'n': len(orig_coords), 'coords': [list(c) for c in orig_coords],
             'pmax': r0.get('pmax', 0.0), 'pmin': r0.get('pmin', 0.0),
             'mxmax': r0.get('mxmax', 0.0), 'mymax': r0.get('mymax', 0.0),
             'd_orig': d_orig, 'Po_orig': Po_orig,
+            # Bệ + ĐƯỜNG KÍNH + sức chịu của phương án gốc PHẢI đi theo phương án
+            # gốc (không lấy bệ đã thu / đường kính thắng) để audit R3/R4/R5… và
+            # mặt bằng phản ánh ĐÚNG phương án gốc, so sánh được tiến hóa.
+            # Bệ gốc phải ĐỦ CHỨA cọc gốc: nếu ô L_X/L_Y hiện tại nhỏ hơn mức cần
+            # (vd đã bị "thu bệ" ở lần chạy trước) thì lấy bệ vừa khít cọc gốc —
+            # tránh cọc tràn ra ngoài bệ + báo R4 KHÔNG ĐẠT oan.
+            'cap_lx': _orig_cap_lx, 'cap_ly': _orig_cap_ly,
+            'safe_d_orig': _safe_d_o,
+            'ct_orig': float(dia_o.Ct or 0.0),
+            'm_orig': float(dia_o.M or 0.0),
+            'h_orig': float(dia_o.H or 0.0),
             'ok': r0.get('pmax', 1e9) <= Po_orig,
             'msg': 'Phuong an goc (MCOC, d=%.3g m)' % d_orig}
 
@@ -170,6 +188,15 @@ def run_extended_optimization(params, loads, table, cfg=None,
         % (cap_report['old_LX'], cap_report['old_LY'],
            cap_report['new_LX'], cap_report['new_LY'],
            cap_report['safe_d'], cap_report['round_to']))
+
+    # Bệ của PHƯƠNG ÁN ĐỀ XUẤT đi theo chính nó: bệ đã thu nếu áp dụng resize,
+    # ngược lại giữ bệ gốc (chỉ đề xuất). Để mỗi phương án vẽ trong bệ của mình.
+    if cap_report['applied']:
+        rec['cap_lx'] = cap_report['new_LX']
+        rec['cap_ly'] = cap_report['new_LY']
+    else:
+        rec['cap_lx'] = cap_report['old_LX']
+        rec['cap_ly'] = cap_report['old_LY']
 
     return {
         'per_diameter': per_diameter,
