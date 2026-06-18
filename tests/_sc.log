@@ -1,0 +1,32 @@
+================================================================================
+  KIEM CHUNG XUYEN SUOT: doi nguong rang buoc -> van tim duoc toi uu
+  (nhieu ho so MCOC that trong mcoc_input_sample/)
+================================================================================
+
+  T1: pool 4 luoi, n = 3..6
+     R5  [Po] 520..1257 T  -> n* 6..3  | don dieu: True
+     R6  [M]  28..148 T.m  -> n* 6..3  | don dieu: True
+
+  T7: pool 21 luoi, n = 3..15 | CO luc nho
+     R5  [Po] 602..2669 T  -> n* 15..3  | don dieu: True
+     R5b [Ct] (nho toi 1014 T)  -> n* 10..3  | don dieu: True
+     R6  [M]  66..416 T.m  -> n* 15..3  | don dieu: True
+
+  T8: pool 44 luoi, n = 3..25 | CO luc nho
+     R5  [Po] 1739..16960 T  -> n* 24..3  | don dieu: True
+     R5b [Ct] (nho toi 3580 T)  -> n* 4..3  | don dieu: True
+     R6  [M]  406..3759 T.m  -> n* 25..3  | don dieu: True
+
+  T11: pool 54 luoi, n = 3..30
+     R5  [Po] 1608..24099 T  -> n* 30..3  | don dieu: True
+     R6  [M]  148..2812 T.m  -> n* 30..3  | don dieu: True
+
+  T14: pool 44 luoi, n = 3..25
+     R5  [Po] 1819..21070 T  -> n* 24..3  | don dieu: True
+     R6  [M]  148..2516 T.m  -> n* 24..3  | don dieu: True
+
+  => Don dieu DUNG tren MOI ho so & MOI rang buoc: True
+  Doi chung engine (T7, [M]=140 T.m): NSGA-II+MCOC n*=8 | vet can pool=8 | khop
+
+  [OK] docs\figures\constraints.png
+================================================================================

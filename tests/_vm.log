@@ -1,0 +1,33 @@
+================================================================================
+  KIEM CHUNG TREN DU LIEU MCOC THAT (5 ho so input)
+================================================================================
+  T1: pool 4 luoi | [Po]* thiet ke = 656 T -> n* vet can = 5
+  T7: pool 21 luoi | [Po]* thiet ke = 799 T -> n* vet can = 10
+  T8: pool 44 luoi | [Po]* thiet ke = 3201 T -> n* vet can = 14
+  T11: pool 54 luoi | [Po]* thiet ke = 3208 T -> n* vet can = 15
+  T14: pool 44 luoi | [Po]* thiet ke = 3095 T -> n* vet can = 14
+
+[5.1/5.4] NSGA-II + MCOC: dat n* vet can? on dinh qua seed?
+    T1    n* vet can=5 | NSGA 6 seed=[5, 5, 5, 5, 5] | best dat vet can: True
+    T7    n* vet can=10 | NSGA 6 seed=[10, 10, 12, 10, 10] | best dat vet can: True
+    T8    n* vet can=14 | NSGA 6 seed=[14, 14, 14, 14, 14] | best dat vet can: True
+    T11   n* vet can=15 | NSGA 6 seed=[16, 16, 16, 16, 16] | best dat vet can: False
+    T14   n* vet can=14 | NSGA 6 seed=[14, 14, 14, 14, 14] | best dat vet can: True
+
+[5.2] KHA THI: 64 phuong an DAT (5 ho so), max Pmax/[Po] = 0.985 (<=1)
+[5.3] PARETO: moi mat (n,footprint) khong bi troi: True
+[5.7] CAN BANG TINH (bo tri khuyen nghi that):
+    T1    |SumP-N|=0.00e+00 |SumP.dy-Mxt|=0.00e+00 |SumP.dx-Myt|=2.27e-13
+    T7    |SumP-N|=0.00e+00 |SumP.dy-Mxt|=1.36e-13 |SumP.dx-Myt|=3.64e-12
+    T8    |SumP-N|=0.00e+00 |SumP.dy-Mxt|=3.64e-12 |SumP.dx-Myt|=0.00e+00
+    T11   |SumP-N|=0.00e+00 |SumP.dy-Mxt|=1.46e-11 |SumP.dx-Myt|=0.00e+00
+    T14   |SumP-N|=3.64e-12 |SumP.dy-Mxt|=0.00e+00 |SumP.dx-Myt|=1.82e-11
+    => Can bang tinh dung (sai so tuong doi may): True
+
+  Sinh hinh...
+   [OK] docs\figures\convergence.png
+   [OK] docs\figures\pareto.png
+   [OK] docs\figures\pmax_ratio.png
+   [OK] docs\figures\layouts.png
+   [OK] docs\figures\parity.png
+================================================================================
