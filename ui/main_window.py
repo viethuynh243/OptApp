@@ -207,6 +207,13 @@ class MainWindow:
         ttk.Label(frame_geom,
                   text="Đơn vị (theo MCOC): lực = Tấn (T); momen = T.m. Áp dụng cho cả tải trọng và [Po]/[Ct]/[M].",
                   foreground="#888").grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
+        # Cảnh báo: [Po] trong file input MCOC chỉ là MẶC ĐỊNH (thường 500) — phải
+        # nhập sức chịu tải THẬT theo đường kính (vd cọc d=2.0 m ~ 2000 T), nếu
+        # không mọi phương án sẽ "trượt" và không tìm được lời giải.
+        ttk.Label(frame_geom,
+                  text="⚠ [Po]/[Ct]/[M] trong file input chỉ là MẶC ĐỊNH — hãy nhập sức chịu tải THẬT theo đường kính cọc.",
+                  foreground="#b03a2e", wraplength=360, justify="left").grid(
+            row=4, column=0, columnspan=4, sticky="w", pady=(2, 0))
 
         # Loads
         frame_loads = tk.LabelFrame(inner, text="Tổ hợp Tải trọng", padx=10, pady=5)
