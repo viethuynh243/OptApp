@@ -504,6 +504,10 @@ class MainWindow:
         if hasattr(self, 'orig_mymax'): d['orig_mymax'] = self.orig_mymax
         if hasattr(self, 'result_filepath'): d['result_filepath'] = self.result_filepath
         d['SAFE_D'] = d.get('D_PILE', 1.2)
+        # Chuẩn hóa [Po]/[Ct] -> Rc,d/Rt,d theo TCVN 10304:2014 Điều 7.1.11 nếu
+        # người dùng đã khai báo Rc,k + hệ số tin cậy (qua file/CSV). Idempotent.
+        from core import tcvn
+        tcvn.apply_design_capacities(d)
         return d
 
     def browse_exe(self):

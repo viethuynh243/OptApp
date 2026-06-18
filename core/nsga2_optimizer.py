@@ -43,7 +43,8 @@ from core.blackbox import MCOCBlackbox
 from core.refine_optimizer import grid_coords, min_spacing, footprint
 from core.constants import (SPACING_MIN_FACTOR, SPACING_MAX_FACTOR, NMAX_AXIS,
                             effective_min_spacing,
-                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION)
+                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION,
+                            ENFORCE_SPACING_MAX)
 
 
 # ===========================================================================
@@ -143,7 +144,8 @@ def evaluate(ind, params, loads, evaluator, cache, counters):
         cv += max(0.0, (-Ct) - pmin) / max(Ct, 1.0)             # R5b nhổ
     s = min_spacing(coords)
     cv += max(0.0, s_min - s) / s_min                            # R3 dưới (+ thông thủy)
-    cv += max(0.0, s - s_max) / s_max                            # R3 trên
+    if ENFORCE_SPACING_MAX:                                      # R3 trên 6d (chỉ khi bật)
+        cv += max(0.0, s - s_max) / s_max
     mx = float(np.max(np.abs(coords[:, 0])))
     my = float(np.max(np.abs(coords[:, 1])))
     if 'L_X' in params:
@@ -370,6 +372,8 @@ def run_nsga2(params, loads, evaluator=None, pop_size=40, n_gen=30,
         all_evaluated, n_evals, eval_mode
     """
     log = log or (lambda m: None)
+    from core import tcvn
+    tcvn.apply_design_capacities(params)   # [Po]/[Ct] -> Rc,d/Rt,d (Điều 7.1.11) nếu có Rc,k
     rng = np.random.default_rng(seed)
     params['_secondary'] = secondary   # 'compact' (footprint) | 'pmax'
 

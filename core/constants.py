@@ -7,6 +7,12 @@ SPACING_MIN_FACTOR = 3.0
 SPACING_MAX_FACTOR = 6.0
 BORED_CLEAR_MIN = 1.0
 
+# Cận trên 6d KHÔNG phải giới hạn của TCVN 10304:2014 (chỉ 3d cọc ma sát / 1,5d
+# cọc chống là cận dưới bắt buộc). 6d là quy ước thực hành giữ giả thiết bệ cứng.
+# Vì vậy 6d được dùng làm CẬN TÌM KIẾM (kẹp sx, sy khi tối ưu) nhưng KHÔNG loại bỏ
+# phương án vượt 6d — chỉ cảnh báo. Đặt True nếu muốn coi 6d là ràng buộc cứng.
+ENFORCE_SPACING_MAX = False
+
 NX_MIN = 2
 NX_MAX = 10
 NMAX_AXIS = 14
