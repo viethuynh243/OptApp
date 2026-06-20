@@ -10,7 +10,8 @@ vạch Po.
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+import tkinter as tk
 import matplotlib.patches as patches
 import matplotlib.colors as mcolors
 from matplotlib.colors import LinearSegmentedColormap
@@ -31,17 +32,41 @@ class PlotCanvas:
     # Khởi tạo & vòng đời canvas
     # ========================================================================
     def __init__(self, master):
-        """Khởi tạo figure/axes matplotlib và gắn vào widget Tkinter (master)."""
+        """Khởi tạo figure/axes matplotlib và gắn vào widget Tkinter (master).
+
+        Canvas + thanh công cụ (NavigationToolbar2Tk) được bọc trong MỘT Frame
+        chung (self.container) để MainWindow chỉ cần pack self.widget như cũ mà
+        vẫn có đầy đủ nút phóng to/thu nhỏ/di chuyển/lưu ảnh của matplotlib.
+        """
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
-        self.canvas = FigureCanvasTkAgg(self.fig, master=master)
-        self.widget = self.canvas.get_tk_widget()
+        # Khung chứa: gói canvas (trên) + thanh công cụ (dưới) thành 1 widget pack được
+        self.container = tk.Frame(master)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.container)
+        canvas_w = self.canvas.get_tk_widget()
+        # Thanh công cụ matplotlib: phóng to / di chuyển / về gốc / lưu ảnh
+        self.toolbar = NavigationToolbar2Tk(self.canvas, self.container)
+        self.toolbar.update()
+        self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
+        canvas_w.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # MainWindow pack widget này (khung chứa), không pack riêng canvas nữa
+        self.widget = self.container
+        self._canvas_w = canvas_w
         # Tự co giãn (auto-scale): nhớ lệnh vẽ gần nhất để VẼ LẠI khi cửa sổ đổi
         # kích thước; cỡ chữ tính theo kích thước figure (_font_scale) nên bảng/
         # nhãn không bị tràn hay đổi bố cục khi người dùng chỉnh layout.
         self._redraw_cb = None
         self._last_size = (0, 0)
         self._resize_after = None
-        self.widget.bind('<Configure>', self._on_resize)
+        # Bind <Configure> trên CHÍNH widget canvas (không phải khung chứa) để
+        # bắt đúng kích thước vùng vẽ, tránh sai số do thanh công cụ.
+        self._canvas_w.bind('<Configure>', self._on_resize)
+
+        # Đọc nhanh khi rê chuột (hover): lưu tọa độ/lực cọc của lần vẽ gần nhất
+        self._hover_coords = None
+        self._hover_forces = None
+        # Tạo 1 chú thích (annotation) ẩn dùng lại cho mọi lần rê chuột
+        self._make_hover_annot()
+        self._hover_cid = self.canvas.mpl_connect("motion_notify_event", self._on_hover)
 
     def _on_resize(self, event):
         """Vẽ lại nội dung hiện tại khi widget đổi kích thước (có debounce).
@@ -70,6 +95,49 @@ class PlotCanvas:
             except Exception:
                 pass
 
+    def _make_hover_annot(self):
+        """Tạo lại chú thích hover trên axes hiện tại (sau khi fig.clf() xóa axes
+        cũ thì annotation cũ cũng mất). Mặc định ẩn."""
+        self._hover_annot = self.ax.annotate(
+            "", xy=(0, 0), xytext=(12, 12), textcoords="offset points",
+            bbox=dict(boxstyle="round", fc="#ffffe0", ec="#888"), fontsize=8)
+        self._hover_annot.set_visible(False)
+
+    def _on_hover(self, event):
+        """Rê chuột lên cọc để đọc nhanh số hiệu, tọa độ và lực P.
+
+        Bọc try/except để thao tác chuột KHÔNG BAO GIỜ làm sập UI. Tìm cọc gần
+        con trỏ nhất; nếu trong ngưỡng ~0.6 m thì hiện chú thích, ngoài thì ẩn.
+        """
+        try:
+            coords = self._hover_coords
+            if (event.inaxes != self.ax or coords is None or len(coords) == 0
+                    or event.xdata is None or event.ydata is None):
+                if self._hover_annot.get_visible():
+                    self._hover_annot.set_visible(False)
+                    self.canvas.draw_idle()
+                return
+            # Khoảng cách từ con trỏ tới từng cọc → chọn cọc gần nhất
+            dx = coords[:, 0] - event.xdata
+            dy = coords[:, 1] - event.ydata
+            dist = np.hypot(dx, dy)
+            i = int(np.argmin(dist))
+            if dist[i] <= 0.6:
+                x, y = float(coords[i, 0]), float(coords[i, 1])
+                text = f"Cọc {i + 1}\n({x:.2f}, {y:.2f}) m"
+                forces = self._hover_forces
+                if forces is not None and i < len(forces):
+                    text += f"\nP={float(forces[i]):.1f} T"
+                self._hover_annot.xy = (x, y)
+                self._hover_annot.set_text(text)
+                self._hover_annot.set_visible(True)
+                self.canvas.draw_idle()
+            elif self._hover_annot.get_visible():
+                self._hover_annot.set_visible(False)
+                self.canvas.draw_idle()
+        except Exception:
+            pass
+
     def _font_scale(self):
         """Hệ số co giãn cỡ chữ theo chiều cao figure (px) so với mốc 600px —
         giữ tỉ lệ chữ/ô không đổi khi figure phóng to/thu nhỏ."""
@@ -82,8 +150,11 @@ class PlotCanvas:
     def clear(self):
         """Đưa khung vẽ về trạng thái TRỐNG như lúc mới mở (không vẽ bệ/cọc)."""
         self._redraw_cb = None
+        self._hover_coords = None
+        self._hover_forces = None
         self.fig.clf()
         self.ax = self.fig.add_subplot(111)
+        self._make_hover_annot()
         self.canvas.draw_idle()
 
     # ========================================================================
@@ -154,6 +225,14 @@ class PlotCanvas:
         # Xóa nội dung cũ, tạo lại axes sạch cho lần vẽ mới
         self.fig.clf()
         self.ax = self.fig.add_subplot(111)
+        self._make_hover_annot()
+        # Lưu tọa độ/lực để đọc nhanh khi rê chuột (hover)
+        if coords is None or len(coords) == 0:
+            self._hover_coords = None
+            self._hover_forces = None
+        else:
+            self._hover_coords = np.asarray(coords, dtype=float)
+            self._hover_forces = forces
 
         # Đọc thông số bệ/cọc/giới hạn từ params (có giá trị mặc định)
         L_X = params.get('L_X', 6.0)
@@ -302,9 +381,13 @@ class PlotCanvas:
         """
         # Ghi nhớ để VẼ LẠI khi cửa sổ đổi kích thước (auto-scale)
         self._redraw_cb = lambda: self.draw_constraint_view(data)
+        # Bảng kiểm toán không có cọc để rê chuột → tắt dữ liệu hover
+        self._hover_coords = None
+        self._hover_forces = None
         fs = self._font_scale()   # hệ số co giãn cỡ chữ theo kích thước figure
         self.fig.clf()
         ax = self.ax = self.fig.add_subplot(111)
+        self._make_hover_annot()
         ax.axis('off')
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)
