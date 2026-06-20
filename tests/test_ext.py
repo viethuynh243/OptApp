@@ -20,6 +20,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
+import pytest
 
 from core.ext.pile_section import (area, inertia, section_props,
                                    DiameterOption, DiameterTable)
@@ -33,6 +34,11 @@ from io_handlers.mcoc_writer_ext import self_check_diameter
 
 SAMPLE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                       "mcoc_input_sample", "T3_EXT.txt")
+
+_needs_sample = pytest.mark.skipif(
+    not os.path.exists(SAMPLE),
+    reason="Thiếu dữ liệu mẫu bảo mật %s (không track trong repo) — bỏ qua." % SAMPLE,
+)
 
 
 def test_pile_section():
@@ -58,6 +64,7 @@ def test_diameter_table():
     print("[OK] diameter_table: d=%s" % t.diameters())
 
 
+@_needs_sample
 def test_writer_diameter():
     """Round-trip patch duong kinh tren file MCOC mau that."""
     params, _, _ = parse_input_file(SAMPLE)
@@ -97,6 +104,7 @@ def _mock_factory(params_d, dia, loads):
     return ev
 
 
+@_needs_sample
 def test_orchestrator():
     """Quet duong kinh + R7/R8 + chon toan cuc + resize be (evaluator gia)."""
     params, loads, _ = parse_input_file(SAMPLE)
