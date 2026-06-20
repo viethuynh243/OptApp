@@ -881,6 +881,28 @@ class MainWindow:
     # ========================================================================
     # TAB 1 - TƯƠNG TÁC: CHẠY TỐI ƯU & HIỂN THỊ KẾT QUẢ
     # ========================================================================
+    def _validate_mcoc_setup(self):
+        """Kiểm tra cấu hình MCOC bắt buộc (exe + file input gốc + tọa độ cọc gốc).
+
+        Trả về True nếu hợp lệ; nếu thiếu thì hiện cảnh báo phù hợp và trả về False.
+        Dùng chung cho run_optimize / run_optimize_ext / run_refine_real.
+        """
+        exe = self.params['exe_path'].get().strip()
+        if not exe or not os.path.exists(exe):
+            messagebox.showwarning(
+                "Cần cấu hình MCOC",
+                "Mọi phương án được chấm bằng MCOC (chính xác).\n"
+                "Hãy chọn đường dẫn MCOC Batch ở mục \"Cấu hình MCOC (bắt buộc)\".")
+            return False
+        if (not self.input_filepath or not os.path.exists(self.input_filepath)
+                or not getattr(self, 'original_coords', None)):
+            messagebox.showwarning(
+                "Thiếu file MCOC gốc",
+                "Cần mở FILE INPUT MCOC gốc (.txt, có tọa độ cọc gốc) làm template.\n"
+                "Dùng \"Mở file đầu vào\" để nạp file input MCOC — không phải file _result hay CSV.")
+            return False
+        return True
+
     def run_optimize(self):
         """Chạy tối ưu — mặc định ĐÁNH GIÁ CHÍNH XÁC bằng MCOC (NSGA-II).
 
@@ -907,19 +929,7 @@ class MainWindow:
             return
 
         # 2) BẮT BUỘC MCOC — không chấp nhận phương án xấp xỉ
-        exe = self.params['exe_path'].get().strip()
-        if not exe or not os.path.exists(exe):
-            messagebox.showwarning(
-                "Cần cấu hình MCOC",
-                "Chương trình đánh giá mọi phương án bằng MCOC (chính xác).\n"
-                "Hãy chọn đường dẫn MCOC Batch ở mục \"Cấu hình MCOC (bắt buộc)\".")
-            return
-        if (not self.input_filepath or not os.path.exists(self.input_filepath)
-                or not getattr(self, 'original_coords', None)):
-            messagebox.showwarning(
-                "Thiếu file MCOC gốc",
-                "Cần mở FILE INPUT MCOC gốc (.txt, có tọa độ cọc gốc) làm template.\n"
-                "Dùng \"Mở file đầu vào\" để nạp file input MCOC — không phải file _result hay CSV.")
+        if not self._validate_mcoc_setup():
             return
 
         params = self.get_params_dict()
@@ -1282,15 +1292,7 @@ class MainWindow:
         if not self.loads:
             messagebox.showwarning("Chưa có tải trọng", "Vui lòng thêm ít nhất một tổ hợp tải trọng.")
             return
-        exe = self.params['exe_path'].get().strip()
-        if not exe or not os.path.exists(exe):
-            messagebox.showwarning("Cần cấu hình MCOC",
-                                   "Tối ưu mở rộng chấm bằng MCOC chính xác. Hãy chọn MCOC Batch.")
-            return
-        if (not self.input_filepath or not os.path.exists(self.input_filepath)
-                or not getattr(self, 'original_coords', None)):
-            messagebox.showwarning("Thiếu file MCOC gốc",
-                                   "Cần mở FILE INPUT MCOC gốc (.txt, có tọa độ cọc gốc) làm template.")
+        if not self._validate_mcoc_setup():
             return
 
         params = self.get_params_dict()
@@ -1463,18 +1465,7 @@ class MainWindow:
     def run_refine_real(self):
         """Chạy chế độ MCOC thực: tinh chỉnh Pareto từng bước trên thread nền,
         dùng file input MCOC gốc làm template."""
-        exe = self.params['exe_path'].get().strip()
-        if not exe:
-            messagebox.showwarning("Thiếu MCOC", "Chưa chọn đường dẫn MCOC Batch (Command Line).")
-            return
-        if not self.input_filepath or not os.path.exists(self.input_filepath):
-            messagebox.showwarning(
-                "Thiếu file input gốc",
-                "Chế độ MCOC thực cần file INPUT MCOC gốc làm template.\n"
-                "Hãy load file input (.txt/.dat) của MCOC — không phải file _result.")
-            return
-        if not getattr(self, 'original_coords', None):
-            messagebox.showwarning("Thiếu phương án gốc", "File input chưa có tọa độ cọc gốc.")
+        if not self._validate_mcoc_setup():
             return
 
         self.txt_result.delete(1.0, tk.END)
