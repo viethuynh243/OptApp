@@ -110,6 +110,11 @@ class MainWindow:
         self.loads = []
         self.current_config = None
 
+        # --- Vòng đời 1 lần CHẠY tối ưu (Tab 1): khóa nút Chạy + tiến trình + Dừng ---
+        self._run_cancel = threading.Event()  # đặt cờ -> evaluator bọc sẽ dừng vòng lặp
+        self._is_running = False               # đang có 1 luồng tối ưu chạy?
+        self._active_evaluator = None          # evaluator hiện hành (để đếm n_calls)
+
         self.setup_ui()
         self.add_default_loads()
 
@@ -159,10 +164,25 @@ class MainWindow:
         ttk.Button(frame_io, text="Xuất kết quả", command=self.save_file).pack(side=tk.RIGHT, fill=tk.X, expand=False, padx=2)
 
         # Nút CHẠY — ghim đáy pane trên (gọn), luôn thấy dù vùng nhập liệu đang cuộn
+        # Cụm tiến trình + nút DỪNG — ghim đáy DƯỚI nút Chạy (pack BOTTOM xếp chồng
+        # ngược nên cụm này được khai báo TRƯỚC để nằm dưới cùng).
+        run_state_frame = tk.Frame(top_pane)
+        run_state_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 8))
+        self.progress_run = ttk.Progressbar(run_state_frame, mode="indeterminate")
+        self.progress_run.pack(side=tk.TOP, fill=tk.X)
+        bottom_row = tk.Frame(run_state_frame)
+        bottom_row.pack(side=tk.TOP, fill=tk.X, pady=(2, 0))
+        self.lbl_run_status = ttk.Label(bottom_row, text="")
+        self.lbl_run_status.pack(side=tk.LEFT)
+        self.btn_stop_opt = ttk.Button(bottom_row, text="■ Dừng", state="disabled",
+                                       command=self._request_stop_opt)
+        self.btn_stop_opt.pack(side=tk.RIGHT)
+
+        # Nút CHẠY — ghim đáy pane trên (gọn), luôn thấy dù vùng nhập liệu đang cuộn
         self.btn_run_opt = tk.Button(top_pane, text="▶ CHẠY TỐI ƯU HÓA",
                                      font=("Arial", 11, "bold"), bg="#27ae60", fg="white",
                                      command=self.run_optimize)
-        self.btn_run_opt.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(4, 8), ipady=4)
+        self.btn_run_opt.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(4, 4), ipady=4)
 
         # Vùng CUỘN ở giữa: Canvas + Scrollbar; mọi mục nhập liệu nằm trong `inner`.
         scroll_holder = tk.Frame(top_pane)
@@ -907,6 +927,70 @@ class MainWindow:
             return False
         return True
 
+    # ========================================================================
+    # TAB 1 - VÒNG ĐỜI 1 LẦN CHẠY: khóa nút Chạy, tiến trình trực tiếp, Dừng
+    # ========================================================================
+    def _set_running(self, running: bool):
+        """Bật/tắt trạng thái "đang chạy": khóa nút Chạy, mở nút Dừng, chạy
+        thanh tiến trình; và ngược lại khi kết thúc."""
+        if running:
+            self._is_running = True
+            self._run_cancel.clear()
+            self.btn_run_opt.config(state="disabled")
+            self.btn_stop_opt.config(state="normal")
+            try:
+                self.progress_run.start(12)
+            except Exception:
+                pass
+        else:
+            self._is_running = False
+            self.btn_run_opt.config(state="normal")
+            self.btn_stop_opt.config(state="disabled")
+            try:
+                self.progress_run.stop()
+            except Exception:
+                pass
+
+    def _poll_run_progress(self, evaluator=None):
+        """Cập nhật nhãn "Đã gọi MCOC: N lần" mỗi 250 ms khi còn đang chạy.
+
+        evaluator chỉ là gợi ý ban đầu; thực tế ưu tiên evaluator hiện hành
+        (self._active_evaluator) vì luồng mở rộng đổi runner theo từng đường kính."""
+        if not self._is_running:
+            return
+        ev = self._active_evaluator or evaluator
+        runner = getattr(ev, 'runner', None)
+        if runner is not None and not self._run_cancel.is_set():
+            self.lbl_run_status.config(
+                text="Đã gọi MCOC: %d lần" % getattr(runner, 'n_calls', 0))
+        self.root.after(250, lambda: self._poll_run_progress(evaluator))
+
+    def _request_stop_opt(self):
+        """Yêu cầu DỪNG: đặt cờ hợp tác; evaluator bọc sẽ ngắt ở lần chấm kế tiếp."""
+        self._run_cancel.set()
+        self.lbl_run_status.config(text="Đang dừng...")
+
+    def _wrap_cancellable(self, evaluator):
+        """Bọc evaluator thực để hỗ trợ DỪNG hợp tác mà KHÔNG sửa core.
+
+        Trước mỗi lần chấm, nếu cờ dừng đã đặt thì ném MCOCError để vòng tối ưu
+        thoát ở lần đánh giá kế tiếp. Sao chép .runner/.workdir để phần đếm tiến
+        trình và xử lý kết quả vẫn hoạt động."""
+        from core.mcoc_runner import MCOCError
+
+        def wrapped(coords):
+            if self._run_cancel.is_set():
+                raise MCOCError("Đã dừng theo yêu cầu")
+            return evaluator(coords)
+
+        wrapped.runner = getattr(evaluator, 'runner', None)
+        wrapped.workdir = getattr(evaluator, 'workdir', None)
+        if hasattr(evaluator, 'dia'):
+            wrapped.dia = evaluator.dia
+        # evaluator hiện hành để _poll_run_progress đếm đúng runner đang chạy
+        self._active_evaluator = wrapped
+        return wrapped
+
     def run_optimize(self):
         """Chạy tối ưu — mặc định ĐÁNH GIÁ CHÍNH XÁC bằng MCOC (NSGA-II).
 
@@ -914,6 +998,8 @@ class MainWindow:
         thu bệ (run_optimize_ext)."""
         if self.var_ext_enable.get():
             return self.run_optimize_ext()
+        if self._is_running:   # chống bấm Chạy lần 2 khi đang chạy
+            return
         # 0) Phải nhập đủ thông số bài toán bắt buộc (> 0)
         required = {'L_X': "Rộng bệ Lx", 'L_Y': "Dài bệ Ly",
                     'D_PILE': "Đ.kính cọc d", 'P_LIMIT': "Sức nén [Po]"}
@@ -944,8 +1030,10 @@ class MainWindow:
         self.txt_result.delete(1.0, tk.END)
         self._log_refine("=== TỐI ƯU BẰNG MCOC (NSGA-II — đánh giá chính xác) ===")
         self._log_refine("Đang chạy MCOC, vui lòng đợi...")
+        self._set_running(True)
 
         def worker():
+            from core.mcoc_runner import MCOCError
             try:
                 from io_handlers.mcoc_writer import self_check
                 from core.nsga2_optimizer import run_nsga2
@@ -955,18 +1043,27 @@ class MainWindow:
                     return
                 # Tải trọng lấy TỪ UI (ghi đè tải trong file MCOC gốc) — UI là nguồn duy nhất
                 evaluator = MCOCBlackbox.make_real_evaluator(params, loads=loads, log=self._log_refine)
+                ev = self._wrap_cancellable(evaluator)
+                self.root.after(0, lambda: self._poll_run_progress(ev))
                 # Chấm phương án gốc (để so sánh) — cùng bộ tải UI
-                orig_res = evaluator(np.array(params['original_coords'], dtype=float))
-                results = run_nsga2(params, loads, evaluator=evaluator,
+                orig_res = ev(np.array(params['original_coords'], dtype=float))
+                results = run_nsga2(params, loads, evaluator=ev,
                                     pop_size=20, n_gen=10, max_evals=140,
                                     secondary=self.var_secondary.get(),
                                     log=self._log_refine)
                 results['_orig_eval'] = (len(params['original_coords']), orig_res)
                 self.root.after(0, lambda: self._show_nsga2_results(results))
+            except MCOCError as e:
+                if "Đã dừng" in str(e):
+                    self._log_refine("Đã dừng.")
+                else:
+                    self._log_refine("LỖI: %s" % e)
             except Exception as e:
                 import traceback
                 self._log_refine("LỖI: %s" % e)
                 self._log_refine(traceback.format_exc()[-300:])
+            finally:
+                self.root.after(0, lambda: self._set_running(False))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1285,6 +1382,8 @@ class MainWindow:
 
     def run_optimize_ext(self):
         """Chạy TỐI ƯU MỞ RỘNG: quét đường kính (MCOC) + R7/R8 + thu bệ."""
+        if self._is_running:   # chống bấm Chạy lần 2 khi đang chạy
+            return
         # Validation giống luồng chuẩn
         required = {'L_X': "Rộng bệ Lx", 'L_Y': "Dài bệ Ly",
                     'D_PILE': "Đ.kính cọc d (gốc)", 'P_LIMIT': "Sức nén [Po]"}
@@ -1325,8 +1424,11 @@ class MainWindow:
         self._log_refine("=== TỐI ƯU MỞ RỘNG (quét %d đường kính, R7=%s, R8=%s) ==="
                          % (len(table), cfg.enable_R7, cfg.enable_R8))
         self._log_refine("Đang chạy MCOC cho từng đường kính, vui lòng đợi...")
+        self._set_running(True)
+        self.root.after(0, lambda: self._poll_run_progress(None))
 
         def worker():
+            from core.mcoc_runner import MCOCError
             try:
                 from io_handlers.mcoc_writer import self_check
                 from core.ext.orchestrator import run_extended_optimization
@@ -1334,15 +1436,31 @@ class MainWindow:
                 if not ok:
                     self._log_refine("LỖI TEMPLATE: " + msg)
                     return
+                # Factory bọc evaluator thực mỗi đường kính để hỗ trợ DỪNG hợp tác.
+                def _cancellable_factory(params_d, dia, lds):
+                    from core.ext.blackbox_ext import make_diameter_evaluator
+                    base_ev = make_diameter_evaluator(params, dia, loads=lds,
+                                                      d_orig=d_orig, Po_orig=Po_orig,
+                                                      log=self._log_refine)
+                    return self._wrap_cancellable(base_ev)
                 out = run_extended_optimization(
-                    params, loads, table, cfg=cfg, d_orig=d_orig, Po_orig=Po_orig,
+                    params, loads, table, cfg=cfg,
+                    evaluator_factory=_cancellable_factory,
+                    d_orig=d_orig, Po_orig=Po_orig,
                     pop_size=16, n_gen=8, max_evals=140,
                     secondary=self.var_secondary.get(), log=self._log_refine)
                 self.root.after(0, lambda: self._show_ext_results(out, cfg))
+            except MCOCError as e:
+                if "Đã dừng" in str(e):
+                    self._log_refine("Đã dừng.")
+                else:
+                    self._log_refine("LỖI: %s" % e)
             except Exception as e:
                 import traceback
                 self._log_refine("LỖI: %s" % e)
                 self._log_refine(traceback.format_exc()[-400:])
+            finally:
+                self.root.after(0, lambda: self._set_running(False))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1469,6 +1587,8 @@ class MainWindow:
     def run_refine_real(self):
         """Chạy chế độ MCOC thực: tinh chỉnh Pareto từng bước trên thread nền,
         dùng file input MCOC gốc làm template."""
+        if self._is_running:   # chống bấm Chạy lần 2 khi đang chạy
+            return
         if not self._validate_mcoc_setup():
             return
 
@@ -1480,8 +1600,10 @@ class MainWindow:
         params['mock_mode'] = False
         params['refine_mode'] = self.var_refine_mode.get()
         loads = list(self.loads)
+        self._set_running(True)
 
         def worker():
+            from core.mcoc_runner import MCOCError
             try:
                 # Kiểm tra template trước khi chạy
                 from io_handlers.mcoc_writer import self_check
@@ -1492,10 +1614,19 @@ class MainWindow:
                 self._log_refine("Template: " + msg)
 
                 evaluator = MCOCBlackbox.make_real_evaluator(params, log=self._log_refine)
-                results = run_pareto_refinement(params, loads, evaluator, log=self._log_refine)
+                ev = self._wrap_cancellable(evaluator)
+                self.root.after(0, lambda: self._poll_run_progress(ev))
+                results = run_pareto_refinement(params, loads, ev, log=self._log_refine)
                 self.root.after(0, lambda: self._show_refine_results(results))
+            except MCOCError as e:
+                if "Đã dừng" in str(e):
+                    self._log_refine("Đã dừng.")
+                else:
+                    self._log_refine("LOI: %s" % e)
             except Exception as e:
                 self._log_refine("LOI: %s" % e)
+            finally:
+                self.root.after(0, lambda: self._set_running(False))
 
         threading.Thread(target=worker, daemon=True).start()
 
