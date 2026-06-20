@@ -548,6 +548,11 @@ class MainWindow:
         left_paned.add(res_pane, weight=2)
 
         self.txt_result = tk.Text(res_pane, height=12, width=40, font=("Consolas", 10))
+        # Thẻ màu để dễ quét kết quả: ĐẠT xanh, KHÔNG ĐẠT đỏ, tiêu đề xanh đậm.
+        self.txt_result.tag_config("ok", foreground="#1e8449")
+        self.txt_result.tag_config("bad", foreground="#b03a2e")
+        self.txt_result.tag_config("head", foreground="#1a3c5e", font=("Consolas", 10, "bold"))
+        self.txt_result.tag_config("muted", foreground="#888")
         res_vsb = ttk.Scrollbar(res_pane, orient="vertical", command=self.txt_result.yview)
         self.txt_result.configure(yscrollcommand=res_vsb.set)
         res_vsb.pack(side=tk.RIGHT, fill=tk.Y)
@@ -1425,13 +1430,17 @@ class MainWindow:
         M_LIMIT = self._pget('M_LIMIT')
         P_TENSION = self._pget('P_TENSION')
         W = 60
-        ins = lambda s="": self.txt_result.insert(tk.END, s + "\n")
+        def ins(s="", tag=None):
+            start = self.txt_result.index(tk.END)
+            self.txt_result.insert(tk.END, s + "\n")
+            if tag:
+                self.txt_result.tag_add(tag, start, self.txt_result.index(tk.END))
         rec = results.get('recommended')
         orig = results.get('original_config')
 
-        ins("=" * W)
-        ins("  PHUONG AN KIEN NGHI")
-        ins("=" * W)
+        ins("=" * W, "head")
+        ins("  PHUONG AN KIEN NGHI", "head")
+        ins("=" * W, "head")
         if rec:
             type_str = {'A': 'Truc giao (A)', 'B': 'So le (B)',
                         'Goc': 'Giu nguyen phuong an goc'}.get(rec['type'], rec['type'])
@@ -1455,15 +1464,15 @@ class MainWindow:
             for i, (x, y) in enumerate(rec['coords']):
                 ins(f"     {i+1:>3}  {float(x):>9.3f}  {float(y):>9.3f}")
         else:
-            ins("  Khong tim thay phuong an thoa man.")
+            ins("  Khong tim thay phuong an thoa man.", "bad")
             ins(f"  Ly do: {results.get('reason', '')}")
         ins("")
 
         if orig:
             status = "DAT" if orig['ok'] else "KHONG DAT"
-            ins("-" * W)
-            ins(f"  PHUONG AN GOC : {status}")
-            ins("-" * W)
+            ins("-" * W, "head")
+            ins(f"  PHUONG AN GOC : {status}", "ok" if orig['ok'] else "bad")
+            ins("-" * W, "head")
             ins(f"  So coc = {orig['n']}    Pmax = {orig['pmax']:.2f} T   (Po = {P_LIMIT:.0f} T)")
             ins(f"  Pmin = {orig['pmin']:.2f} T")
             if orig.get('cap_lx') and orig.get('cap_ly'):
@@ -1471,9 +1480,9 @@ class MainWindow:
             ins("")
 
         show = results.get('all_valid_configs', [])
-        ins("-" * W)
-        ins(f"  CAC PHUONG AN DAT (MCOC)  -  {len(show)} phuong an")
-        ins("-" * W)
+        ins("-" * W, "head")
+        ins(f"  CAC PHUONG AN DAT (MCOC)  -  {len(show)} phuong an", "head")
+        ins("-" * W, "head")
         if show:
             # Cột Pmin chỉ hiện khi có kiểm nhổ ([Ct] > 0); cột Mmax khi có [M] > 0.
             show_pmin = P_TENSION > 0
@@ -1498,9 +1507,9 @@ class MainWindow:
                 notes.append(f"[Ct]={P_TENSION:.0f} T (Pmin >= -[Ct])")
             if show_m:
                 notes.append(f"[M]={M_LIMIT:.0f} T.m")
-            ins(f"  (Gioi han: {', '.join(notes)})")
+            ins(f"  (Gioi han: {', '.join(notes)})", "muted")
         else:
-            ins("  Khong co phuong an nao DAT trong kich thuoc be nay.")
+            ins("  Khong co phuong an nao DAT trong kich thuoc be nay.", "bad")
         if n_evals is not None:
             ins(f"\n  So lan goi MCOC: {n_evals}")
 
