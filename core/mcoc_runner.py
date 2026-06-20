@@ -165,6 +165,13 @@ class MCOCRunner:
         except OSError as e:
             raise MCOCError("Khong chay duoc MCOC (%s): %s" % (self.exe, e))
 
+        # MCOC báo lỗi (exit code != 0): coi như thất bại, KHÔNG đọc file cũ/dở.
+        if proc.returncode != 0:
+            tail = (proc.stdout or "")[-400:] + (proc.stderr or "")[-400:]
+            raise MCOCError(
+                "MCOC ket thuc voi ma loi %d cho %s.\nOutput cuoi:\n%s"
+                % (proc.returncode, base, tail))
+
         # Tìm file kết quả: ưu tiên <base>_result.txt, nếu không có thì tìm
         # file *_result.txt mới nhất sinh ra sau t0 trong workdir.
         if not os.path.exists(result_path):
