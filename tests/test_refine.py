@@ -66,7 +66,7 @@ def build_demo_input():
 # ============================================================================
 # Kịch bản kiểm thử end-to-end
 # ============================================================================
-def main():
+def test_refine():
     """Chạy toàn bộ chuỗi: parse input -> self-check template -> vòng lặp tinh chỉnh
     gọi stub MCOC, rồi kiểm tra phương án tốt nhất thỏa ràng buộc và có file kết quả."""
     print("=" * 70)
@@ -120,4 +120,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    test_refine()

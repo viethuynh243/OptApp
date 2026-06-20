@@ -44,7 +44,7 @@ def build_input():
 # ============================================================================
 # Kịch bản kiểm thử
 # ============================================================================
-def main():
+def test_nsga2_mcoc():
     """Chạy NSGA-II với evaluator MCOC thực (stub) ở chế độ EXACT và kiểm tra:
     có phương án kiến nghị, đúng chế độ MCOC-exact, Pmax<=[Po], có file kết quả."""
     print("=" * 60)
@@ -90,4 +90,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    test_nsga2_mcoc()
