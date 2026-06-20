@@ -60,6 +60,45 @@ def to_safe_filename(text: str) -> str:
 
 
 # ============================================================================
+# TIỆN ÍCH: TOOLTIP (chú thích bật lên khi rê chuột)
+# ============================================================================
+class Tooltip:
+    """Chú thích nhỏ hiện ra khi rê chuột vào widget (di chuột ra thì ẩn).
+
+    Dùng Toplevel không viền chứa 1 Label. Gắn vào widget bằng cách khởi tạo:
+        Tooltip(widget, "Nội dung chú thích").
+    """
+
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self._tip = None
+        widget.bind("<Enter>", self._show, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+
+    def _show(self, _event=None):
+        if self._tip or not self.text:
+            return
+        try:
+            x = self.widget.winfo_rootx() + 16
+            y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        except Exception:
+            return
+        self._tip = tk.Toplevel(self.widget)
+        self._tip.wm_overrideredirect(True)
+        self._tip.wm_geometry(f"+{x}+{y}")
+        tk.Label(self._tip, text=self.text, justify="left",
+                 background="#ffffe0", foreground="#333",
+                 relief="solid", borderwidth=1,
+                 font=("Arial", 8), wraplength=260, padx=6, pady=3).pack()
+
+    def _hide(self, _event=None):
+        if self._tip is not None:
+            self._tip.destroy()
+            self._tip = None
+
+
+# ============================================================================
 # CỬA SỔ CHÍNH (Controller)
 # ============================================================================
 class MainWindow:
@@ -118,12 +157,37 @@ class MainWindow:
         self.setup_ui()
         self.add_default_loads()
 
+        # Style ô nhập KHÔNG hợp lệ (nền hồng) — dùng cho kiểm tra tức thời.
+        try:
+            ttk.Style().configure("Invalid.TEntry", fieldbackground="#ffd6d6")
+        except Exception:
+            pass
+        # Kiểm tra tức thời 4 thông số bắt buộc khi người dùng gõ (cập nhật trạng thái).
+        for _k in ('L_X', 'L_Y', 'D_PILE', 'P_LIMIT'):
+            try:
+                self.params[_k].trace_add("write", self._validate_inputs)
+            except Exception:
+                pass
+
+        # Phím tắt: Ctrl+O mở file, Ctrl+R chạy, Ctrl+S lưu, F1 hướng dẫn.
+        self.root.bind("<Control-o>", lambda e: self.load_file())
+        self.root.bind("<Control-r>", lambda e: (None if self._is_running else self.run_optimize()))
+        self.root.bind("<Control-s>", lambda e: self.save_file())
+        self.root.bind("<F1>", lambda e: self._show_help())
+
         # Hỗ trợ kéo-thả file vào cửa sổ
         self.root.drop_target_register(DND_FILES)
         self.root.dnd_bind('<<Drop>>', self.handle_drop)
 
     def setup_ui(self):
         """Tạo Notebook 2 tab (Tương tác / Hàng loạt) và dựng giao diện từng tab."""
+        # Thanh trạng thái ghim ĐÁY cửa sổ (pack trước, side=BOTTOM, để Notebook ở
+        # trên không đè lên). Cập nhật từ nạp file / kiểm tra thông số / chạy.
+        self.lbl_status = tk.Label(self.root, text="Sẵn sàng.", anchor="w",
+                                   relief="sunken", bd=1, padx=6,
+                                   font=("Arial", 9), fg="#333")
+        self.lbl_status.pack(side=tk.BOTTOM, fill=tk.X)
+
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
@@ -207,6 +271,14 @@ class MainWindow:
         scroll_canvas.bind("<Enter>", lambda e: scroll_canvas.bind_all("<MouseWheel>", _on_wheel))
         scroll_canvas.bind("<Leave>", lambda e: scroll_canvas.unbind_all("<MouseWheel>"))
 
+        # Băng hướng dẫn quy trình (gọn, màu xám) — luôn ở đầu vùng nhập liệu
+        ttk.Label(
+            inner,
+            text="Quy trình: ① Cấu hình MCOC  →  ② Mở file đầu vào  →  "
+                 "③ Nhập thông số & tải  →  ④ ▶ Chạy",
+            foreground="#666", wraplength=400, justify="left").pack(
+            anchor="w", pady=(0, 4))
+
         # Geometrics
         frame_geom = tk.LabelFrame(inner, text="Thông số Bài toán", padx=10, pady=5)
         frame_geom.pack(fill=tk.X, pady=5)
@@ -218,14 +290,31 @@ class MainWindow:
                        ("D_PILE", "Đ.kính cọc d (m)")]
         cap_fields = [("P_LIMIT", "Sức nén [Po] (T)"), ("P_TENSION", "Sức nhổ [Ct] (T)"),
                       ("M_LIMIT", "Sức uốn [M] (T.m)")]
+        # Chú thích ngắn (tiếng Việt) gắn vào nhãn từng trường khi rê chuột.
+        param_tips = {
+            'D_PILE': "Đường kính cọc d (m). Quyết định k/c tối thiểu (×d) và sức "
+                      "chịu tải thật của cọc.",
+            'P_LIMIT': "[Po] — sức chịu nén thiết kế của 1 cọc (T). Nhập giá trị "
+                       "THẬT theo đường kính, KHÔNG dùng mặc định 500 trong file.",
+            'P_TENSION': "[Ct] — sức chịu nhổ thiết kế của 1 cọc (T). Để trống nếu "
+                         "không kiểm tra điều kiện nhổ.",
+            'M_LIMIT': "[M] — sức chịu uốn cho phép (T.m). Để trống/0 nếu không "
+                       "kiểm tra điều kiện uốn.",
+        }
         self._param_entries = {}
         for r, (k, text) in enumerate(geom_fields):
-            ttk.Label(frame_geom, text=text).grid(row=r, column=0, sticky="w", padx=(2, 4), pady=2)
+            lbl = ttk.Label(frame_geom, text=text)
+            lbl.grid(row=r, column=0, sticky="w", padx=(2, 4), pady=2)
+            if k in param_tips:
+                Tooltip(lbl, param_tips[k])
             e = ttk.Entry(frame_geom, textvariable=self.params[k], width=9)
             e.grid(row=r, column=1, sticky="ew", padx=(0, 8), pady=2)
             self._param_entries[k] = e
         for r, (k, text) in enumerate(cap_fields):
-            ttk.Label(frame_geom, text=text).grid(row=r, column=2, sticky="w", padx=(2, 4), pady=2)
+            lbl = ttk.Label(frame_geom, text=text)
+            lbl.grid(row=r, column=2, sticky="w", padx=(2, 4), pady=2)
+            if k in param_tips:
+                Tooltip(lbl, param_tips[k])
             e = ttk.Entry(frame_geom, textvariable=self.params[k], width=9)
             e.grid(row=r, column=3, sticky="ew", padx=(0, 2), pady=2)
             self._param_entries[k] = e
@@ -296,20 +385,32 @@ class MainWindow:
         self.var_secondary = tk.StringVar(value="compact")
         row_sec = tk.Frame(frame_run); row_sec.pack(fill=tk.X, pady=(4, 0))
         ttk.Label(row_sec, text="Ưu tiên:").pack(side=tk.LEFT)
-        ttk.Radiobutton(row_sec, text="Tiết kiệm (bệ gọn)", variable=self.var_secondary,
-                        value="compact").pack(side=tk.LEFT, padx=4)
-        ttk.Radiobutton(row_sec, text="An toàn (giảm Pmax)", variable=self.var_secondary,
-                        value="pmax").pack(side=tk.LEFT, padx=10)
+        rb_compact = ttk.Radiobutton(row_sec, text="Tiết kiệm (bệ gọn)", variable=self.var_secondary,
+                        value="compact")
+        rb_compact.pack(side=tk.LEFT, padx=4)
+        Tooltip(rb_compact, "Sau khi đủ cọc & đạt Pmax≤[Po], ưu tiên bố trí GỌN "
+                            "(bệ nhỏ, ít tốn vật liệu).")
+        rb_pmax = ttk.Radiobutton(row_sec, text="An toàn (giảm Pmax)", variable=self.var_secondary,
+                        value="pmax")
+        rb_pmax.pack(side=tk.LEFT, padx=10)
+        Tooltip(rb_pmax, "Sau khi đủ cọc, ưu tiên GIẢM lực nén lớn nhất Pmax "
+                         "(tăng dự trữ an toàn).")
 
         # Xử lý bệ chật (tùy chọn): k/c tối thiểu + đề xuất nới bệ. Mặc định 3d và
         # BẬT gợi ý — không đổi thuật toán, chỉ là lựa chọn người dùng kiểm soát.
         row_sp = tk.Frame(frame_run); row_sp.pack(fill=tk.X, pady=(4, 0))
         ttk.Label(row_sp, text="K/c tối thiểu:").pack(side=tk.LEFT)
-        ttk.Combobox(row_sp, textvariable=self.var_min_spacing,
-                     values=['3.0', '2.75', '2.5'], width=5, state="readonly").pack(side=tk.LEFT, padx=2)
+        cb_minsp = ttk.Combobox(row_sp, textvariable=self.var_min_spacing,
+                     values=['3.0', '2.75', '2.5'], width=5, state="readonly")
+        cb_minsp.pack(side=tk.LEFT, padx=2)
+        Tooltip(cb_minsp, "Hệ số khoảng cách tim cọc tối thiểu (×d). TCVN khuyến "
+                          "nghị 3.0d; giảm xuống 2.75d/2.5d chỉ khi bệ quá chật.")
         ttk.Label(row_sp, text="×d", foreground="#888").pack(side=tk.LEFT)
-        ttk.Checkbutton(row_sp, text="Đề xuất nới bệ khi bệ chật",
-                        variable=self.var_suggest_cap).pack(side=tk.LEFT, padx=(12, 0))
+        chk_suggest = ttk.Checkbutton(row_sp, text="Đề xuất nới bệ khi bệ chật",
+                        variable=self.var_suggest_cap)
+        chk_suggest.pack(side=tk.LEFT, padx=(12, 0))
+        Tooltip(chk_suggest, "Khi không xếp đủ cọc trong bệ hiện tại, gợi ý kích "
+                             "thước bệ tối thiểu cần nới rộng.")
 
         # --- TỐI ƯU MỞ RỘNG: gộp chung vào "Điều Khiển Tối Ưu" (ngăn bằng đường kẻ) ---
         ttk.Separator(frame_run, orient="horizontal").pack(fill=tk.X, pady=(8, 4))
@@ -320,14 +421,22 @@ class MainWindow:
         self.frame_ext_body = tk.Frame(frame_run)
 
         row_chk = tk.Frame(self.frame_ext_body); row_chk.pack(fill=tk.X, pady=(2, 0))
-        ttk.Checkbutton(row_chk, text="R7 lực ngang [H]",
-                        variable=self.var_ext_r7).pack(side=tk.LEFT)
-        ttk.Checkbutton(row_chk, text="R8 tương tác P–M",
-                        variable=self.var_ext_r8).pack(side=tk.LEFT, padx=10)
+        chk_r7 = ttk.Checkbutton(row_chk, text="R7 lực ngang [H]",
+                        variable=self.var_ext_r7)
+        chk_r7.pack(side=tk.LEFT)
+        Tooltip(chk_r7, "R7: kiểm tra sức chịu LỰC NGANG [H] của cọc (cần khai báo "
+                        "[H] trong bảng đường kính).")
+        chk_r8 = ttk.Checkbutton(row_chk, text="R8 tương tác P–M",
+                        variable=self.var_ext_r8)
+        chk_r8.pack(side=tk.LEFT, padx=10)
+        Tooltip(chk_r8, "R8: kiểm tra TƯƠNG TÁC nén–uốn (P–M) trên tiết diện cọc.")
 
         row_cap = tk.Frame(self.frame_ext_body); row_cap.pack(fill=tk.X, pady=(2, 0))
-        ttk.Checkbutton(row_cap, text="Tự thu bệ",
-                        variable=self.var_ext_capresize).pack(side=tk.LEFT)
+        chk_resize = ttk.Checkbutton(row_cap, text="Tự thu bệ",
+                        variable=self.var_ext_capresize)
+        chk_resize.pack(side=tk.LEFT)
+        Tooltip(chk_resize, "Tự động THU NHỎ kích thước bệ về mức tối thiểu vừa đủ "
+                            "bố trí cọc (làm tròn theo bội số đã chọn).")
         ttk.Label(row_cap, text="Làm tròn (m):").pack(side=tk.LEFT, padx=(8, 2))
         ttk.Combobox(row_cap, textvariable=self.var_ext_round,
                      values=['0.05', '0.1', '0.25', '0.5', '1.0'], width=5,
@@ -748,6 +857,10 @@ class MainWindow:
             # Để trống khung vẽ, chờ người dùng ấn "Chạy tối ưu hóa"
             self.plot_canvas.clear()
 
+            self._set_status(
+                "Đã nạp %d file (%d tổ hợp tải)." % (success_count, total_new_loads))
+            self._validate_inputs()
+
     def clear_loads(self):
         """Làm mới: xóa tải trọng, THÔNG SỐ BÀI TOÁN, file gốc và kết quả.
 
@@ -936,6 +1049,7 @@ class MainWindow:
         if running:
             self._is_running = True
             self._run_cancel.clear()
+            self._set_status("Đang chạy tối ưu...")
             self.btn_run_opt.config(state="disabled")
             self.btn_stop_opt.config(state="normal")
             try:
@@ -944,6 +1058,7 @@ class MainWindow:
                 pass
         else:
             self._is_running = False
+            self._set_status("Đã xong." if not self._run_cancel.is_set() else "Đã dừng.")
             self.btn_run_opt.config(state="normal")
             self.btn_stop_opt.config(state="disabled")
             try:
@@ -990,6 +1105,63 @@ class MainWindow:
         # evaluator hiện hành để _poll_run_progress đếm đúng runner đang chạy
         self._active_evaluator = wrapped
         return wrapped
+
+    # ========================================================================
+    # TAB 1 - THANH TRẠNG THÁI & KIỂM TRA THÔNG SỐ TỨC THỜI
+    # ========================================================================
+    def _set_status(self, text):
+        """Cập nhật nội dung thanh trạng thái đáy cửa sổ (an toàn nếu chưa dựng)."""
+        if hasattr(self, 'lbl_status'):
+            self.lbl_status.config(text=text)
+
+    def _show_help(self):
+        """Hộp thoại hướng dẫn nhanh (F1): quy trình 4 bước + đơn vị + phím tắt."""
+        messagebox.showinfo(
+            "Hướng dẫn nhanh",
+            "QUY TRÌNH 4 BƯỚC:\n"
+            "  ① Cấu hình MCOC (chọn MCOC Batch).\n"
+            "  ② Mở file đầu vào MCOC gốc (.txt — có tọa độ cọc gốc).\n"
+            "  ③ Nhập thông số bài toán (Lx, Ly, d, [Po]) và tổ hợp tải.\n"
+            "  ④ Bấm ▶ CHẠY TỐI ƯU HÓA.\n\n"
+            "ĐƠN VỊ (theo MCOC): lực = Tấn (T); momen = T.m.\n"
+            "Lưu ý: [Po]/[Ct]/[M] trong file chỉ là MẶC ĐỊNH — nhập sức chịu "
+            "tải THẬT theo đường kính cọc.\n\n"
+            "PHÍM TẮT:\n"
+            "  Ctrl+O: Mở file    Ctrl+R: Chạy\n"
+            "  Ctrl+S: Xuất kết quả    F1: Hướng dẫn này")
+
+    def _validate_inputs(self, *_args):
+        """Kiểm tra tức thời 4 thông số BẮT BUỘC (L_X, L_Y, D_PILE, P_LIMIT).
+
+        Trả về True khi cả 4 đều là số > 0; ngược lại False. Đồng thời:
+          - tô đỏ ô không hợp lệ bằng style ttk "Invalid.TEntry" (fieldbackground);
+          - cập nhật thanh trạng thái với tóm tắt trường thiếu/sai.
+        KHÔNG hiển thị popup và KHÔNG khóa nút Chạy (giữ cổng kiểm tra ở run_optimize).
+        """
+        required = {'L_X': "Lx", 'L_Y': "Ly", 'D_PILE': "d", 'P_LIMIT': "[Po]"}
+        bad = []
+        for k, short in required.items():
+            raw = self.params[k].get().strip()
+            ok = False
+            if raw != '':
+                try:
+                    ok = float(raw) > 0
+                except ValueError:
+                    ok = False
+            entry = self._param_entries.get(k)
+            if entry is not None:
+                try:
+                    entry.config(style=("TEntry" if ok else "Invalid.TEntry"))
+                except Exception:
+                    pass
+            if not ok:
+                bad.append(short)
+
+        if bad:
+            self._set_status("Thiếu/không hợp lệ: " + ", ".join(bad))
+            return False
+        self._set_status("Thông số hợp lệ.")
+        return True
 
     def run_optimize(self):
         """Chạy tối ưu — mặc định ĐÁNH GIÁ CHÍNH XÁC bằng MCOC (NSGA-II).
