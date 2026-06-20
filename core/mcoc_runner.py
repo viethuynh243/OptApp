@@ -177,7 +177,10 @@ class MCOCRunner:
         if not os.path.exists(result_path):
             cands = []
             for fn in os.listdir(workdir):
-                if fn.lower().endswith("_result.txt"):
+                fl = fn.lower()
+                # CHỈ nhận file kết quả CỦA CHÍNH input này (tránh nhặt nhầm
+                # kết quả của input khác vừa sinh <1s trước trong cùng thư mục).
+                if fl.endswith("_result.txt") and fl.startswith(base.lower()):
                     fp = os.path.join(workdir, fn)
                     # Chỉ nhận file mới sinh sau khi bắt đầu chạy (trừ 1s sai số)
                     if os.path.getmtime(fp) >= t0 - 1:

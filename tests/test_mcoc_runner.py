@@ -122,5 +122,52 @@ def test_run_no_result_file_raises(tmp_path):
     assert "khong sinh file ket qua" in str(exc.value)
 
 
+# ============================================================================
+# 4. Hồi quy: KHÔNG được trả về kết quả của input KHÁC còn sót trong thư mục
+#    (lỗi: fallback quét cả thư mục nhặt nhầm *_result.txt của input khác)
+# ============================================================================
+def _write_parseable_result(path):
+    """Ghi 1 file *_result.txt CÓ bảng tổng kết nội lực để parse_mcoc_result_file
+    đọc được (sao chép khối tối thiểu mà tests/mcoc_stub.py sinh ra)."""
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write("     TONG CONG TY TVTK GTVT\n\n")
+        f.write("              CHUONG TRINH TINH KHONG GIAN MONG COC\n\n\n")
+        f.write("            Ten cong trinh : INPUT KHAC\n\n\n")
+        f.write("       Nc =  8    Np =  2\n\n\n")
+        f.write("                                     BANG TONG KET NOI LUC\n\n")
+        f.write("                 Coc   t.h     N         Qx        Qy        Mz        Mx        My\n\n")
+        f.write("         Nmin      1     1       100.00    0.0       0.0       0.0       -5.62     -20.88   \n")
+        f.write("         Nmax      1     1       481.56    0.0       0.0       0.0       5.62      20.88    \n")
+        f.write("\n")
+
+
+def test_run_does_not_pick_other_inputs_result(tmp_path):
+    """Lỗi hồi quy: input bị MCOC từ chối (exit 0, không sinh file của nó) KHÔNG
+    được nhặt nhầm *_result.txt của một input KHÁC vừa sinh trong cùng thư mục.
+    Phải raise MCOCError, không trả về kết quả của input khác."""
+    workdir = tmp_path
+
+    # 1) Kết quả CŨ của một input KHÁC, còn sót lại trong cùng thư mục (mtime mới).
+    other_result = str(workdir / "other_result.txt")
+    _write_parseable_result(other_result)
+
+    # 2) Input mục tiêu hợp lệ.
+    target_path = str(workdir / "target.txt")
+    write_demo_input(target_path)
+
+    # 3) Stub thoát 0 nhưng KHÔNG ghi target_result.txt (mô phỏng MCOC từ chối input).
+    noop_stub = str(workdir / "noop_stub.py")
+    with open(noop_stub, 'w', encoding='utf-8') as f:
+        f.write("import sys\n")
+        f.write("sys.stdout.write('Ket qua: 0 OK / 1 LOI\\n')\n")
+        f.write("sys.exit(0)\n")
+
+    runner = MCOCRunner(noop_stub)
+    # Phải raise, KHÔNG được trả về nội dung của other_result.txt (Nmax=481.56).
+    with pytest.raises(MCOCError) as exc:
+        runner.run(target_path)
+    assert "khong sinh file ket qua" in str(exc.value)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
