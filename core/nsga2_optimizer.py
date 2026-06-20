@@ -43,7 +43,8 @@ from core.blackbox import MCOCBlackbox
 from core.refine_optimizer import grid_coords, min_spacing, footprint
 from core.constants import (SPACING_MIN_FACTOR, SPACING_MAX_FACTOR, NMAX_AXIS,
                             effective_min_spacing,
-                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION)
+                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION,
+                            ENFORCE_SPACING_MAX)
 
 
 # ===========================================================================
@@ -144,10 +145,11 @@ def evaluate(ind, params, loads, evaluator, cache, counters):
     # R3 khoảng cách: dùng NGUỒN DUY NHẤT rigid_cap.spacing_values để ĐỒNG NHẤT
     # với check_layout/báo cáo/audit. Kiểu B kiểm ĐƯỜNG CHÉO √((sx/2)²+sy²),
     # vì sx,sy mỗi cái ≤ 6d vẫn cho đường chéo tới ~6.7d > 6d — min_spacing bỏ sót.
+    # Cận trên 6d chỉ phạt khi ENFORCE_SPACING_MAX=True (6d là cảnh báo mềm — TCVN).
     for _lbl, sp_val, chk_up in rigid_cap.spacing_values(
             spec['type'], spec['nx'], spec['ny'], spec['sx'], spec['sy'], coords):
         cv += max(0.0, s_min - sp_val) / s_min                  # R3 dưới (+ thông thủy)
-        if chk_up:
+        if chk_up and ENFORCE_SPACING_MAX:
             cv += max(0.0, sp_val - s_max) / s_max              # R3 trên (kể cả đường chéo)
     mx = float(np.max(np.abs(coords[:, 0])))
     my = float(np.max(np.abs(coords[:, 1])))
@@ -446,6 +448,8 @@ def run_nsga2(params, loads, evaluator=None, pop_size=40, n_gen=30,
         all_evaluated, n_evals, eval_mode
     """
     log = log or (lambda m: None)
+    from core import tcvn
+    tcvn.apply_design_capacities(params)   # [Po]/[Ct] -> Rc,d/Rt,d (Điều 7.1.11) nếu có Rc,k
     rng = np.random.default_rng(seed)
     params['_secondary'] = secondary   # 'compact' (footprint) | 'pmax'
 

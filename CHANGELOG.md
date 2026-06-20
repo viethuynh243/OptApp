@@ -3,6 +3,11 @@
 Tất cả thay đổi đáng kể của ứng dụng. Phiên bản theo [SemVer](https://semver.org/lang/vi/).
 Nguồn version duy nhất: `core/version.py`.
 
+## [1.4.0] — 2026-06-20
+
+### Hợp nhất ext + TCVN 10304:2014
+- Hợp nhất hai nhánh phát triển: **Tối ưu MỞ RỘNG** (`core/ext/`, R1–R8, quét đường kính + thu bệ) và **Bám sát TCVN 10304:2014** (sức chịu tải thiết kế `core/tcvn.py`). Nay nhánh chính là hợp của cả hai. Chi tiết từng mảng xem dưới (mục 1.3.0).
+
 ## [1.3.0] — 2026-06-18
 
 ### Tính năng lớn — Tối ưu MỞ RỘNG (gói `core/ext/`)
@@ -37,6 +42,13 @@ Nguồn version duy nhất: `core/version.py`.
 - **`docs/SO_TAY_VAN_HANH.md`** (sổ tay toàn bộ chức năng) + **`docs/HUONG_DAN_NHANH.md`** (làm theo từng bước với số liệu thật).
 - **Vault Obsidian** quản lý dự án (ADR, concept, engine, module).
 - Test/harness mới: `tests/test_ext.py`, `test_cap_suggest.py`, `validate_mcoc.py`, `validate_method.py`, và các harness lái GUI / duyệt bộ mẫu.
+
+### Bám sát TCVN 10304:2014 (Móng cọc – Tiêu chuẩn thiết kế)
+- **Sức chịu tải thiết kế theo Điều 7.1.11.** Thêm `core/tcvn.py` tính `Rc,d = (γ0/γn)·(Rc,k/γk)`. Khi khai báo `R_C_K` (+ `GAMMA_0`, `GAMMA_N`/`IMPORTANCE_LEVEL`, `GAMMA_K`), `[Po]`/`[Ct]` được tự chuẩn hóa thành `Rc,d`/`Rt,d` (idempotent) qua `apply_design_capacities`, cắm tại `run_nsga2`, `run_optimization`, `run_pareto_refinement` và UI. Không khai báo → giữ `[Po]` nhập tay và coi đó đã là Rc,d (nguồn = 'input').
+- **Cận trên 6d hạ cấp thành CẢNH BÁO MỀM.** 6d không phải giới hạn TCVN (chỉ 3d cọc ma sát là cận dưới bắt buộc). Thêm cờ `ENFORCE_SPACING_MAX=False`: 6d vẫn là cận tìm kiếm nhưng **không loại** phương án vượt 6d (`mechanics`, `nsga2` không phạt; báo cáo ghi "CANH BAO").
+- **Kiểm móng khối quy ước & lún (Điều 7.4).** `core/tcvn.py` thêm `equivalent_block` (mở rộng góc φ_tb/4) và `settlement` (cộng lún từng lớp, Phụ lục C, β=0,8). Báo cáo có mục **6b**; thiếu số liệu địa chất → ghi rõ "CHƯA KIỂM".
+- **Báo cáo nêu rõ phạm vi & nghĩa vụ TCVN.** Hiển thị nguồn `Rc,d` + bảng γ; phụ lục liệt kê các kiểm toán phải làm riêng: sức chịu tải theo vật liệu (7.1.11+7.2), nhóm cọc/lún (7.4), tải ngang (Phụ lục A); nhắc tải N, M phải là nội lực tính toán.
+- Thêm `tests/test_tcvn.py`.
 
 ## [1.2.0] — 2026-06-16
 

@@ -12,11 +12,12 @@ Hàm tự đọc từ results['recommended'] + params + loads.
 import os
 import numpy as np
 
-from core import rigid_cap
+from core import rigid_cap, tcvn
 from core.version import __version__
 from core.constants import (SPACING_MIN_FACTOR, SPACING_MAX_FACTOR,
                             get_safe_d, effective_min_spacing,
-                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION)
+                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION,
+                            ENFORCE_SPACING_MAX)
 
 
 # ============================================================================
@@ -54,6 +55,7 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
     if not cfg:
         return f"# BAN TINH MONG COC — {project_name}\n\nKhong tim duoc phuong an thoa man.\n"
 
+    tcvn.apply_design_capacities(params)   # bảo đảm Po = Rc,d (Điều 7.1.11) nếu có Rc,k
     coords = np.asarray(cfg['coords'], dtype=float)
     n = len(coords)
     d = params['D_PILE']
@@ -98,12 +100,35 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
     L.append(f"| Dai be | Ly | {_fmt(params.get('L_Y',0))} | m |")
     L.append(f"| Duong kinh coc | d | {_fmt(d)} | m |")
     L.append(f"| Tim coc -> mep be toi thieu | c_min | {_fmt(SAFE_D)} | m |")
-    L.append(f"| Suc chiu nen | [Po] | {_fmt(Po,1)} | T |")
-    L.append(f"| Suc chiu nho | [Ct] | {_fmt(Ct,1)} | T |")
+    src = params.get('_capacity_source', 'input')
+    po_label = "[Po] = Rc,d" if src == 'tcvn_7.1.11' else "[Po]"
+    ct_label = "[Ct] = Rt,d" if src == 'tcvn_7.1.11' else "[Ct]"
+    L.append(f"| Suc chiu nen | {po_label} | {_fmt(Po,1)} | T |")
+    L.append(f"| Suc chiu nho | {ct_label} | {_fmt(Ct,1)} | T |")
     L.append(f"| Suc chiu uon | [M] | {_fmt(Mlim,1)} | T.m |")
     if show_R7:
         L.append(f"| Suc chiu luc ngang | [H] | {_fmt(Hlim,1)} | T |")
     L.append("")
+
+    # 1b. Sức chịu tải thiết kế theo Điều 7.1.11 (chỉ khi nhập Rc,k + hệ số γ)
+    if src == 'tcvn_7.1.11':
+        g = params.get('_tcvn_factors', {})
+        L.append("**Suc chiu tai thiet ke (TCVN 10304:2014, Dieu 7.1.11):** "
+                 "`Rc,d = (g0/gn) * (Rc,k/gk)`\n")
+        L.append("| Dai luong | Ky hieu | Gia tri |")
+        L.append("|---|---|---:|")
+        L.append(f"| SCT nen tieu chuan | Rc,k | {_fmt(g.get('R_ck',0),1)} T |")
+        if g.get('R_tk'):
+            L.append(f"| SCT keo tieu chuan | Rt,k | {_fmt(g.get('R_tk',0),1)} T |")
+        L.append(f"| He so dieu kien lam viec | g0 | {_fmt(g.get('gamma_0',0),3)} |")
+        L.append(f"| He so tin cay tam quan trong | gn | {_fmt(g.get('gamma_n',0),3)} |")
+        L.append(f"| He so tin cay theo dat | gk | {_fmt(g.get('gamma_k',0),3)} |")
+        L.append(f"| => SCT nen thiet ke | Rc,d | {_fmt(Po,1)} T |")
+        L.append("")
+    else:
+        L.append("> [Po]/[Ct] duoc NHAP truc tiep, coi la SUC CHIU TAI THIET KE Rc,d/Rt,d. "
+                 "De chuong trinh tu tinh theo Dieu 7.1.11, hay khai bao Rc,k (R_C_K) "
+                 "cung g0 (GAMMA_0), gn (GAMMA_N hoac IMPORTANCE_LEVEL), gk (GAMMA_K).\n")
 
     # 2. Tổ hợp tải trọng
     L.append("## 2. TO HOP TAI TRONG  (luc T, momen T.m)\n")
@@ -164,13 +189,21 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
     L.append("## 4. KIEM TRA HINH HOC\n")
     L.append("| Ma | Dieu kien | Gia tri | Gioi han | Ty le | KL |")
     L.append("|---|---|---:|---:|---:|:--:|")
+    # R3a (cận dưới 3d, BẮT BUỘC theo TCVN): dùng NGUỒN DUY NHẤT spacing_values (s_low).
     L.append(f"| R3a | Khoang cach tim-tim >= {_fmt(s_min_req)} m | {_fmt(s_low)} | "
              f"{_fmt(s_min_req)} | {_ratio(s_min_req, s_low)} | "
              f"{'DAT' if r3a_ok else 'KHONG'} |")
+    # R3b (cận trên 6d): KHONG phai gioi han TCVN -> chi CANH BAO khi vuot,
+    # tru khi bat ENFORCE_SPACING_MAX. Kiểu B xét đường chéo (s_high từ spacing_values).
     _r3b_val = _fmt(s_high) if s_high is not None else '-'
     _r3b_ratio = _ratio(s_high, s_max_req) if s_high is not None else '-'
-    _r3b_kl = '-' if s_high is None else ('DAT' if r3b_ok else 'KHONG')
-    L.append(f"| R3b | Khoang cach <= 6d (Kieu B: duong cheo) | {_r3b_val} | "
+    if s_high is None:
+        _r3b_kl = '-'                                   # không xác định cận trên
+    elif r3b_ok:
+        _r3b_kl = 'DAT'
+    else:
+        _r3b_kl = 'KHONG' if ENFORCE_SPACING_MAX else 'CANH BAO'
+    L.append(f"| R3b | Khoang cach <= 6d (quy uoc; Kieu B: duong cheo) | {_r3b_val} | "
              f"{_fmt(s_max_req)} | {_r3b_ratio} | {_r3b_kl} |")
     L.append(f"| R4x | max|x| + c_min <= Lx/2 | {_fmt(max_x + SAFE_D)} | "
              f"{_fmt(params.get('L_X',0)/2)} | {_ratio(max_x + SAFE_D, params.get('L_X',0)/2)} | "
@@ -221,10 +254,17 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
              f"{'DAT' if cfg['pmax'] <= Po else 'KHONG'} |")
     L.append(f"| R2 | N_min >= -[Ct] | {_fmt(cfg['pmin'],1)} | {_fmt(-Ct,1) if Ct>0 else '-'} | "
              f"{('DAT' if cfg['pmin'] >= -Ct else 'KHONG') if Ct>0 else '-'} |")
+    # R3: cận dưới 3d (TCVN) bắt buộc; cận trên 6d chỉ là quy ước (cảnh báo mềm).
+    # Giá trị hiển thị theo NGUỒN DUY NHẤT spacing_values (s_low / s_high, Kiểu B: chéo).
     _r3_val = _fmt(s_low) + (f" / {_fmt(s_high)}" if s_high is not None else "")
-    L.append(f"| R3 | 3d <= khoang cach <= 6d (Kieu B: chéo) | {_r3_val} | "
-             f"[{_fmt(s_min_req)}, {_fmt(s_max_req)}] | "
-             f"{'DAT' if (r3a_ok and r3b_ok) else 'KHONG'} |")
+    if not r3a_ok:
+        r3_kl = 'KHONG'                                  # vi pham 3d -> loai
+    elif not r3b_ok:
+        r3_kl = 'KHONG' if ENFORCE_SPACING_MAX else 'CANH BAO (>6d)'
+    else:
+        r3_kl = 'DAT'
+    L.append(f"| R3 | k/c >= 3d (TCVN); <= 6d (quy uoc; Kieu B: chéo) | {_r3_val} | "
+             f"[{_fmt(s_min_req)}, {_fmt(s_max_req)}] | {r3_kl} |")
     L.append(f"| R4 | Tim coc cach mep >= c_min | OK | - | "
              f"{'DAT' if (max_x+SAFE_D<=params.get('L_X',0)/2+1e-3 and max_y+SAFE_D<=params.get('L_Y',0)/2+1e-3) else 'KHONG'} |")
     L.append(f"| R5/R6 | Mx, My <= [M] | {_fmt(mmax,1)} | {_fmt(Mlim,1) if Mlim>0 else '-'} | "
@@ -241,6 +281,41 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
                  f"{'1.00' if inter is not None else '-'} | {r8_kl} |")
     L.append("")
 
+    # 6b. Kiểm tra nhóm cọc: móng khối quy ước & lún (Điều 7.4)
+    L.append("## 6b. MONG KHOI QUY UOC & DO LUN  (TCVN 10304:2014, Dieu 7.4)\n")
+    block = tcvn.equivalent_block(coords, params)
+    if block.get('evaluated'):
+        L.append("| Dai luong | Ky hieu | Gia tri |")
+        L.append("|---|---|---:|")
+        L.append(f"| Chieu dai coc | Lc | {_fmt(block['Lc'])} m |")
+        L.append(f"| Goc ma sat trung binh | phi_tb | {_fmt(block['phi_tb'],1)} do |")
+        L.append(f"| Be rong khoi quy uoc | Bqu | {_fmt(block['B_qu'])} m |")
+        L.append(f"| Chieu dai khoi quy uoc | Lqu | {_fmt(block['L_qu'])} m |")
+        L.append(f"| Dien tich day khoi | Aqu | {_fmt(block['A_qu'])} m2 |")
+        L.append(f"| Do sau day khoi | Df | {_fmt(block['base_depth'])} m |")
+        L.append("")
+        st = tcvn.settlement(coords, loads, params)
+        if st.get('evaluated'):
+            S_mm = st['S'] * 1000.0
+            Sgh = st.get('S_limit')
+            kl = '-' if Sgh is None else ('DAT' if st.get('ok') else 'KHONG')
+            L.append(f"- Ap luc gay lun day khoi quy uoc: p_gl = {_fmt(st['p_gl'],2)} T/m2.")
+            L.append(f"- Do lun tinh toan S = **{_fmt(S_mm,1)} mm** "
+                     f"(phuong phap cong lun tung lop, Phu luc C; beta=0,8).")
+            if Sgh is not None:
+                L.append(f"- Do lun gioi han S_gh = {_fmt(Sgh*1000.0,1)} mm -> **{kl}**.")
+            else:
+                L.append("- Chua khai bao do lun gioi han S_gh (S_LIMIT) de ket luan dat/khong.")
+        else:
+            L.append(f"> **CHUA KIEM DO LUN** — {st.get('reason','')}. "
+                     "Khai bao `soil_below` (cac lop dat duoi mui: h, E, gamma) de tinh.")
+    else:
+        L.append(f"> **CHUA KIEM MONG KHOI QUY UOC / DO LUN** — {block.get('reason','')}.")
+        L.append("> Theo Dieu 7.4, mong NHOM coc bat buoc kiem suc chiu tai khoi quy uoc "
+                 "va do lun S <= S_gh. Hay bo sung: `pile_length` (Lc), `phi_tb`, "
+                 "`soil_below` (lop dat duoi mui), `S_LIMIT`.")
+    L.append("")
+
     # 7. Kết luận
     status = "DAT" if cfg.get('ok', True) else "KHONG DAT"
     L.append("## 7. KET LUAN\n")
@@ -255,7 +330,15 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
     if show_R7:
         L.append("- Luc ngang H_max phan phoi tu Hx, Hy, Mz (tinh hoc, coc dung do cung deu); "
                  "**momen than coc do tai ngang** can phan tich p-y rieng khi dang ke.")
-    L.append("- Chua xet: hieu ung nhom coc, do lun, ket cau be (chong thung/uon).")
+    L.append("- Pham vi OptApp: kiem TTGH I theo LUC DOC TRUC tung coc "
+             "(N_max <= Rc,d; N_min >= -Rt,d) + hinh hoc bo tri. "
+             "Suc chiu tai Rc,d/Rt,d theo Dieu 7.1.11.")
+    L.append("- Can kiem RIENG theo TCVN 10304:2014 (xem muc 6b neu da nhap so lieu dia chat):")
+    L.append("  - Suc chiu tai theo VAT LIEU coc (Dieu 7.1.11 + 7.2): Rc,d = min(theo dat, theo vat lieu).")
+    L.append("  - Suc chiu tai NHOM coc / mong khoi quy uoc va DO LUN (Dieu 7.4).")
+    L.append("  - Coc & chuyen vi NGANG theo mo hinh nen (Phu luc A) khi Hx, Hy dang ke.")
+    L.append("- Tai trong N, M phai la NOI LUC TINH TOAN (da to hop, nhan he so) theo "
+             "TCVN 2737 / TCVN 11823.")
     L.append("- Ket qua dung cho bo tri so bo/toi uu; thiet ke chi tiet phai chay MCOC/FEM day du.")
     L.append("")
     return "\n".join(L)

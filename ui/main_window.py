@@ -618,6 +618,10 @@ class MainWindow:
             d['SPACING_MIN_FACTOR'] = float(self.var_min_spacing.get())
         except (ValueError, AttributeError):
             d['SPACING_MIN_FACTOR'] = 3.0
+        # Chuẩn hóa [Po]/[Ct] -> Rc,d/Rt,d theo TCVN 10304:2014 Điều 7.1.11 nếu
+        # người dùng đã khai báo Rc,k + hệ số tin cậy (qua file/CSV). Idempotent.
+        from core import tcvn
+        tcvn.apply_design_capacities(d)
         return d
 
     def browse_exe(self):

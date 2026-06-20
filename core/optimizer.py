@@ -43,6 +43,8 @@ def run_optimization(params, loads):
     Lọc sớm ràng buộc khoảng cách (R3) trước khi sinh tọa độ để tiết kiệm.
     Tiêu chí chọn: ít cọc nhất -> Pmax nhỏ nhất -> ưu tiên giữ phương án gốc.
     """
+    from core import tcvn
+    tcvn.apply_design_capacities(params)   # [Po]/[Ct] -> Rc,d/Rt,d (Điều 7.1.11) nếu có Rc,k
     L_X = params['L_X']
     L_Y = params['L_Y']
     d = params['D_PILE']

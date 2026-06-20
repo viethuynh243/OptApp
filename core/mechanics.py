@@ -9,7 +9,8 @@ from core import rigid_cap
 from core.blackbox import MCOCBlackbox
 from core.constants import (SPACING_MAX_FACTOR, GEOM_TOL, get_safe_d,
                             get_m_limit, get_h_limit, effective_min_spacing,
-                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION)
+                            ENABLE_LATERAL_CHECK, ENABLE_PM_INTERACTION,
+                            ENFORCE_SPACING_MAX)
 
 
 # ============================================================================
@@ -85,9 +86,14 @@ def _geometry_errors(coords, nx, ny, sx, sy, layout_type, d, L_X, L_Y, SAFE_D, s
     """Kiểm tra ràng buộc hình học của bố trí, trả về danh sách lỗi.
 
     R4 mép bệ: cọc ngoài cùng + SAFE_D không vượt nửa kích thước bệ.
-    R3 khoảng cách: sx/sy (hoặc khoảng cách chéo, tim-tim) nằm trong 3d..6d.
+    R3 khoảng cách: cận dưới 3d (TCVN 10304:2014) là BẮT BUỘC; cận trên 6d chỉ là
+    quy ước thực hành nên CHỈ loại phương án khi ENFORCE_SPACING_MAX=True, ngược
+    lại vượt 6d không tính là lỗi (báo cáo nêu cảnh báo).
     """
     errors = []
+    # in_range: chỉ kẹp cận trên khi bật cờ; nếu không, mọi giá trị >= s_min đều đạt.
+    hi = (s_max + GEOM_TOL) if ENFORCE_SPACING_MAX else float('inf')
+    in_range = lambda v: s_min - GEOM_TOL <= v <= hi
     # R4: kiểm tra cọc ngoài cùng so với mép bệ theo 2 phương
     max_x = np.max(np.abs(coords[:, 0]))
     max_y = np.max(np.abs(coords[:, 1]))
@@ -96,9 +102,11 @@ def _geometry_errors(coords, nx, ny, sx, sy, layout_type, d, L_X, L_Y, SAFE_D, s
     if max_y + SAFE_D > L_Y / 2 + GEOM_TOL:
         errors.append(f"Vi pham mep be (Y={max_y:.2f})")
     # R3: dùng NGUỒN DUY NHẤT rigid_cap.spacing_values (Kiểu B xét đường chéo).
+    # Cận dưới 3d là BẮT BUỘC; cận trên 6d chỉ kẹp khi ENFORCE_SPACING_MAX=True
+    # (in_range/hi ở trên tôn trọng cờ TCVN — 6d là cảnh báo mềm khi cờ tắt).
     for label, val, chk_up in rigid_cap.spacing_values(layout_type, nx, ny, sx, sy, coords):
         if val < s_min - GEOM_TOL:
             errors.append(f"{label} = {val:.2f}m < 3d ({s_min:.2f}m)")
-        elif chk_up and val > s_max + GEOM_TOL:
+        elif chk_up and ENFORCE_SPACING_MAX and val > s_max + GEOM_TOL:
             errors.append(f"{label} = {val:.2f}m > 6d ({s_max:.2f}m)")
     return errors
