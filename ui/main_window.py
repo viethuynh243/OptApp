@@ -146,6 +146,17 @@ class MainWindow:
         self.var_min_spacing = tk.StringVar(value='3.0')   # hệ số k/c tối thiểu ×d
         self.var_suggest_cap = tk.BooleanVar(value=True)   # đề xuất nới bệ khi vô nghiệm
 
+        # --- Sức chịu tải theo TCVN 10304:2014 (tùy chọn — tự tính [Po]/[Ct]) ---
+        # Khi bật, chương trình suy ra Rc,d/Rt,d từ Rc,k + hệ số tin cậy theo
+        # Điều 7.1.11 và GHI ĐÈ [Po]/[Ct] (xem core/tcvn.apply_design_capacities).
+        self.var_tcvn_enable = tk.BooleanVar(value=False)  # bật tự tính
+        self.var_rck = tk.StringVar(value='')              # Rc,k — nén tiêu chuẩn (T)
+        self.var_rtk = tk.StringVar(value='')              # Rt,k — kéo tiêu chuẩn (T, tùy chọn)
+        self.var_g0 = tk.StringVar(value='1.15')           # γ0 — điều kiện làm việc
+        self.var_gk = tk.StringVar(value='1.40')           # γk — theo đất
+        self.var_gk_t = tk.StringVar(value='')             # γk,t — theo đất khi kéo (tùy chọn)
+        self.var_imp_level = tk.StringVar(value='II')      # cấp công trình I/II/III → γn
+
         self.loads = []
         self.current_config = None
 
@@ -334,6 +345,69 @@ class MainWindow:
                   text="⚠ [Po]/[Ct]/[M] trong file input chỉ là MẶC ĐỊNH — hãy nhập sức chịu tải THẬT theo đường kính cọc.",
                   foreground="#b03a2e", wraplength=380, justify="left").grid(
             row=4, column=0, columnspan=4, sticky="w", pady=(2, 0))
+
+        # --- Sức chịu tải theo TCVN 10304:2014 (tùy chọn) ---
+        # Cho phép kỹ sư nhập Rc,k + hệ số tin cậy để chương trình TỰ TÍNH [Po]/[Ct]
+        # theo Điều 7.1.11 (Rc,d = γ0/γn · Rc,k/γk). Khi bật, giá trị tính được sẽ
+        # GHI ĐÈ [Po]/[Ct] (xem get_params_dict + core/tcvn.apply_design_capacities).
+        frame_tcvn = tk.LabelFrame(
+            inner, text="Sức chịu tải theo TCVN 10304:2014 (tùy chọn)",
+            padx=10, pady=5)
+        frame_tcvn.pack(fill=tk.X, pady=5)
+        chk_tcvn = ttk.Checkbutton(
+            frame_tcvn, text="Tự tính [Po]/[Ct] từ Rc,k",
+            variable=self.var_tcvn_enable, command=self._toggle_tcvn)
+        chk_tcvn.pack(anchor="w")
+        Tooltip(chk_tcvn, "Bật để chương trình suy ra sức chịu tải THIẾT KẾ "
+                          "Rc,d/Rt,d từ sức chịu tải tiêu chuẩn Rc,k và các hệ số "
+                          "tin cậy theo TCVN 10304:2014 Điều 7.1.11. Khi bật, "
+                          "[Po]/[Ct] sẽ được tính tự động (ô nhập tay bị khóa).")
+
+        self.frame_tcvn_body = tk.Frame(frame_tcvn)
+        self.frame_tcvn_body.pack(fill=tk.X, pady=(4, 0))
+        tcvn_fields = [
+            ("Rc,k — nén tiêu chuẩn (T)", self.var_rck,
+             "Rc,k — sức chịu tải NÉN tiêu chuẩn của 1 cọc (T). Nếu xác định bằng "
+             "tính toán thì lấy bằng sức chịu tải cực hạn Rc,u."),
+            ("Rt,k — kéo tiêu chuẩn (T, tùy chọn)", self.var_rtk,
+             "Rt,k — sức chịu tải KÉO tiêu chuẩn (T). Để trống nếu không kiểm tra "
+             "điều kiện nhổ."),
+            ("γ0 — điều kiện làm việc", self.var_g0,
+             "γ0 — hệ số điều kiện làm việc (mặc định 1.15)."),
+            ("γk — theo đất", self.var_gk,
+             "γk — hệ số tin cậy theo đất (mặc định 1.40)."),
+            ("γk,t — theo đất khi kéo (tùy chọn)", self.var_gk_t,
+             "γk,t — hệ số tin cậy theo đất khi KÉO. Để trống = dùng chung γk."),
+        ]
+        for r, (text, var, tip) in enumerate(tcvn_fields):
+            lbl = ttk.Label(self.frame_tcvn_body, text=text)
+            lbl.grid(row=r, column=0, sticky="w", padx=(2, 4), pady=2)
+            Tooltip(lbl, tip)
+            e = ttk.Entry(self.frame_tcvn_body, textvariable=var, width=10)
+            e.grid(row=r, column=1, sticky="ew", padx=(0, 2), pady=2)
+        lbl_lv = ttk.Label(self.frame_tcvn_body, text="Cấp công trình (γn)")
+        lbl_lv.grid(row=len(tcvn_fields), column=0, sticky="w", padx=(2, 4), pady=2)
+        Tooltip(lbl_lv, "Cấp công trình → hệ số tin cậy tầm quan trọng γn: "
+                        "I=1.20, II=1.15, III=1.10.")
+        cb_lv = ttk.Combobox(self.frame_tcvn_body, textvariable=self.var_imp_level,
+                             values=['I', 'II', 'III'], width=7, state="readonly")
+        cb_lv.grid(row=len(tcvn_fields), column=1, sticky="w", padx=(0, 2), pady=2)
+        self.frame_tcvn_body.columnconfigure(1, weight=1, minsize=60)
+
+        # Xem trước kết quả tính (cập nhật tức thời khi đổi tham số)
+        self.lbl_tcvn_preview = ttk.Label(
+            self.frame_tcvn_body, text="→ nhập Rc,k để tính",
+            foreground="#1a6", wraplength=360, justify="left")
+        self.lbl_tcvn_preview.grid(
+            row=len(tcvn_fields) + 1, column=0, columnspan=2, sticky="w",
+            pady=(4, 0))
+
+        # Gắn trace cập nhật xem trước cho mọi biến TCVN (null-safe khi dựng UI)
+        for _v in (self.var_rck, self.var_rtk, self.var_g0, self.var_gk,
+                   self.var_gk_t, self.var_imp_level):
+            _v.trace_add("write", self._update_tcvn_preview)
+        self._toggle_tcvn()          # đặt trạng thái ban đầu (ẩn/mờ body)
+        self._update_tcvn_preview()  # tính xem trước lần đầu
 
         # Loads
         frame_loads = tk.LabelFrame(inner, text="Tổ hợp Tải trọng", padx=10, pady=5)
@@ -747,8 +821,30 @@ class MainWindow:
             d['SPACING_MIN_FACTOR'] = float(self.var_min_spacing.get())
         except (ValueError, AttributeError):
             d['SPACING_MIN_FACTOR'] = 3.0
+        # Nếu người dùng bật panel TCVN trên GUI: nạp Rc,k + hệ số tin cậy vào d
+        # để apply_design_capacities() suy ra Rc,d/Rt,d (Điều 7.1.11). Chỉ áp khi
+        # Rc,k hợp lệ (>0); ô trống → giữ mặc định của core.
+        try:
+            if self.var_tcvn_enable.get():
+                rck = (self.var_rck.get() or '').strip()
+                rck_val = float(rck) if rck else 0.0
+                if rck_val > 0:
+                    d['R_C_K'] = rck_val
+                    rtk = (self.var_rtk.get() or '').strip()
+                    if rtk:
+                        d['R_T_K'] = float(rtk)
+                    g0 = (self.var_g0.get() or '').strip()
+                    d['GAMMA_0'] = float(g0) if g0 else 1.15
+                    gk = (self.var_gk.get() or '').strip()
+                    d['GAMMA_K'] = float(gk) if gk else 1.40
+                    gk_t = (self.var_gk_t.get() or '').strip()
+                    if gk_t:
+                        d['GAMMA_K_T'] = float(gk_t)
+                    d['IMPORTANCE_LEVEL'] = self.var_imp_level.get()
+        except (ValueError, AttributeError):
+            pass
         # Chuẩn hóa [Po]/[Ct] -> Rc,d/Rt,d theo TCVN 10304:2014 Điều 7.1.11 nếu
-        # người dùng đã khai báo Rc,k + hệ số tin cậy (qua file/CSV). Idempotent.
+        # người dùng đã khai báo Rc,k + hệ số tin cậy (qua file/CSV/GUI). Idempotent.
         from core import tcvn
         tcvn.apply_design_capacities(d)
         return d
@@ -1419,6 +1515,71 @@ class MainWindow:
         self.frame_ext_body.pack(fill=tk.X)   # luôn hiện -> dễ khám phá
         on = self.var_ext_enable.get()
         self._set_state_recursive(self.frame_ext_body, on)
+
+    def _toggle_tcvn(self):
+        """Bật/tắt panel TCVN: hiện thân, mờ/sáng các ô con và KHÓA [Po]/[Ct].
+
+        Khi bật tự tính: [Po]/[Ct] do chương trình suy ra nên khóa 2 ô nhập tay
+        (state='readonly'); khi tắt thì mở lại ('normal'). Giữ vững khi thiếu key.
+        """
+        # Luôn hiện thân để người dùng THẤY chức năng; chỉ làm mờ khi tắt.
+        try:
+            self.frame_tcvn_body.pack(fill=tk.X, pady=(4, 0))
+        except Exception:
+            pass
+        on = self.var_tcvn_enable.get()
+        self._set_state_recursive(self.frame_tcvn_body, on)
+        # Nhãn xem trước nên luôn đọc được (không làm mờ) — bật lại nếu vừa bị mờ.
+        try:
+            self.lbl_tcvn_preview.state(['!disabled'])
+        except Exception:
+            pass
+        # Khóa/mở 2 ô [Po]/[Ct] theo trạng thái bật của panel.
+        for key in ('P_LIMIT', 'P_TENSION'):
+            e = getattr(self, '_param_entries', {}).get(key)
+            if e is None:
+                continue
+            try:
+                e.config(state=('readonly' if on else 'normal'))
+            except Exception:
+                pass
+
+    def _update_tcvn_preview(self, *_args):
+        """Cập nhật nhãn xem trước Rc,d (+Rt,d) từ các tham số TCVN đang nhập.
+
+        Null-safe trong lúc dựng UI (nhãn có thể chưa tồn tại). Ô trống/không hợp
+        lệ → hiển thị gợi ý nhập Rc,k.
+        """
+        lbl = getattr(self, 'lbl_tcvn_preview', None)
+        if lbl is None:
+            return
+        from core import tcvn
+
+        def _f(var, default=None):
+            raw = (var.get() or '').strip()
+            if raw == '':
+                return default
+            try:
+                return float(raw)
+            except (ValueError, TypeError):
+                return default
+
+        rck = _f(self.var_rck)
+        if not rck or rck <= 0:
+            lbl.config(text="→ nhập Rc,k để tính")
+            return
+        g0 = _f(self.var_g0, 1.15)
+        gk = _f(self.var_gk, 1.40)
+        level = (self.var_imp_level.get() or 'II').strip().upper()
+        gn = tcvn.GAMMA_N_BY_LEVEL.get(level, 1.15)
+        po = tcvn.design_axial_capacity(rck, g0, gn, gk)
+        text = f"→ Rc,d = {po:.1f} T"
+        rtk = _f(self.var_rtk)
+        if rtk and rtk > 0:
+            gk_t = _f(self.var_gk_t, gk)
+            ct = tcvn.design_axial_capacity(rtk, g0, gn, gk_t)
+            text += f"; Rt,d = {ct:.1f} T"
+        lbl.config(text=text)
 
     def _set_state_recursive(self, widget, enabled):
         """Bật/mờ đệ quy mọi widget con (ttk dùng state(), tk dùng config)."""
