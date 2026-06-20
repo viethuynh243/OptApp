@@ -5,6 +5,8 @@ __pycache__/
 *.csv
 *.pdf
 *.txt
+!requirements.txt
+!requirements-dev.txt
 *.xlsx
 Mcoc_test/
 .DS_Store

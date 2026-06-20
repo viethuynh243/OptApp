@@ -23,14 +23,14 @@
 
 ## Cài đặt
 
-1. Cài Python 3.9+ hoặc 3.10/3.11.
+1. Cài Python 3.9+ (đã kiểm thử trên 3.13).
 2. Cài các thư viện cần thiết:
 
 ```bash
-pip install numpy matplotlib tkinterdnd2
+pip install -r requirements.txt
 ```
 
-> Trên Windows, `tkinter` thường đã có sẵn cùng Python. Nếu chạy trên Linux, cần cài thêm gói hệ thống `python3-tk`.
+> Trên Windows, `tkinter` thường đã có sẵn cùng Python. Trên Linux cần cài gói hệ thống `python3-tk`. Để đóng gói/chạy test: `pip install -r requirements-dev.txt`.
 
 ## Chạy ứng dụng
 
