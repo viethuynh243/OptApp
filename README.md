@@ -1,6 +1,6 @@
 # OptApp - Tối ưu hóa bố trí cọc móng cầu
 
-**Phiên bản: v1.1.0** (2026-06-16) · xem [CHANGELOG.md](CHANGELOG.md). Nguồn version: `core/version.py`.
+**Phiên bản: v1.3.0** (2026-06-18) · xem [CHANGELOG.md](CHANGELOG.md). Nguồn version: `core/version.py`.
 
 Ứng dụng tối ưu hóa bố trí cọc móng cầu trên bệ chữ nhật. Mục tiêu: tìm phương án có **số cọc ít nhất** mà vẫn đảm bảo điều kiện chịu lực và thi công.
 
@@ -20,6 +20,8 @@
   - giới hạn nén `P_LIMIT`
   - giới hạn nhổ `P_TENSION`
   - kiểm tra momen `M_LIMIT` (nếu bật)
+- **Tối ưu mở rộng (gói `core/ext/`)**: quét nhiều **đường kính cọc** (patch tiết diện thật vào file MCOC, chấm chính xác từng d), chọn đường kính thắng theo **chi phí vật liệu** (số cọc × diện tích), và **tự thu bệ** theo TCVN 10304:2014.
+- **Ràng buộc R1–R8**: ngoài R3–R6, luồng mở rộng bật **R7** (lực ngang Hmax ≤ [H]) và **R8** (tương tác P–M N/[Po] + M/[M] ≤ 1.0).
 
 ## Cài đặt
 
@@ -106,8 +108,18 @@ Kết quả giao nộp luôn từ MCOC. Công thức **bệ cứng** (`core/rigi
 - `core/refine_optimizer.py` - tinh chỉnh Pareto + gọi MCOC thực
 - `core/nsga2_optimizer.py` - tối ưu đa mục tiêu NSGA-II
 - `core/mcoc_runner.py` - gọi MCOC_Batch.exe qua subprocess
+- `core/cap_suggest.py` - đề xuất nới bệ tối thiểu khi bệ chật
+- `core/ext/` - gói tối ưu mở rộng:
+  - `pile_section.py` - bảng/đặc trưng đường kính cọc
+  - `config_ext.py` - cấu hình R7/R8 + thu bệ
+  - `blackbox_ext.py` - đánh giá có R7/R8
+  - `nsga2_ext.py` - NSGA-II mở rộng
+  - `cap_resize.py` - thu bệ theo TCVN 10304:2014
+  - `orchestrator.py` - điều phối end-to-end
 - `io_handlers/file_io.py` - đọc file đầu vào và xuất kết quả
 - `io_handlers/mcoc_writer.py` - sinh file input MCOC từ template
+- `io_handlers/mcoc_writer_ext.py` - patch tiết diện theo đường kính vào template MCOC
+- `io_handlers/report_writer.py` - sinh báo cáo kỹ thuật MD/PDF
 - `io_handlers/export_utils.py` - xuất Excel/PDF/PNG
 
 ## Phương pháp tối ưu hóa (MCOC chính xác)
@@ -116,7 +128,7 @@ Mô tả tóm tắt — chi tiết xem `methodology.md` và `docs/BAO_CAO_THUAT_
 
 1. Tham số hóa bố trí thành genome `(type, nx, ny, sx, sy)` — lưới đối xứng A/B.
 2. **NSGA-II** tiến hóa quần thể phương án (đa mục tiêu: số cọc + bệ gọn/Pmax).
-3. Mỗi phương án được **chấm bằng MCOC chính xác** (gọi `MCOC_Batch.exe`); ràng buộc R3–R6 và Pmax/Pmin/M đều từ MCOC.
+3. Mỗi phương án được **chấm bằng MCOC chính xác** (gọi `MCOC_Batch.exe`); ràng buộc R1–R8 (R3–R6 ở luồng cơ bản, thêm R7/R8 ở luồng mở rộng) và Pmax/Pmin/M đều từ MCOC.
 4. Tốc độ: **cache theo lưới** (không gọi MCOC trùng) + **trần `max_evals`** + **dẫn hướng bằng predictor rẻ** + (khuyến nghị) **song song hóa** lời gọi MCOC.
 5. Trả về **mặt Pareto**; kiến nghị phương án ít cọc nhất → bệ gọn/an toàn.
 
