@@ -1,8 +1,8 @@
-# SỔ TAY VẬN HÀNH — Tối Ưu Hóa Bố Trí Cọc Móng Cầu (OptApp v1.2.0)
+# SỔ TAY VẬN HÀNH — Tối Ưu Hóa Bố Trí Cọc Móng Cầu (OptApp v1.10.0)
 
 > Tài liệu hướng dẫn vận hành **toàn bộ chức năng** của chương trình, kèm quy
 > trình chuẩn, ý nghĩa các điều kiện R1–R8, và xử lý sự cố. Dành cho kỹ sư thiết
-> kế nền móng. Cập nhật: 2026-06-18.
+> kế nền móng. Cập nhật: 2026-06-28.
 
 ---
 
@@ -25,10 +25,17 @@
 - **Mục tiêu**: tìm bố trí cọc (số cọc, lưới, khoảng cách) **ít cọc nhất** mà vẫn
   thỏa mọi điều kiện chịu lực + cấu tạo; có thể đồng thời **đổi đường kính cọc**
   và **thu nhỏ bệ** (luồng mở rộng).
-- **Mô hình tính**: **bệ cứng** (rigid cap) — phân phối lực dọc trục cho từng cọc
-  theo công thức giải tích, hiệu chỉnh theo MCOC thực. **CHƯA** xét Hx/Hy/Mz, hiệu
-  ứng nhóm cọc, độ lún, hay kết cấu bệ. → Dùng cho **bố trí sơ bộ / tối ưu số cọc**;
-  thiết kế chi tiết phải chạy **MCOC/FEM đầy đủ**.
+- **Mô hình TỐI ƯU**: **bệ cứng** (rigid cap) — phân phối lực dọc trục cho từng cọc
+  theo công thức giải tích, hiệu chỉnh theo MCOC thực. Bản thân vòng tối ưu không xét
+  Hx/Hy/Mz, hiệu ứng nhóm, lún hay kết cấu bệ → dùng cho **bố trí sơ bộ / tối ưu số cọc**.
+- **Phân tích bổ sung theo TCVN (sau khi chọn phương án)** — xem ở các chế độ xem
+  *SSI đất–cọc* / *Thiết kế đài* và trong báo cáo kỹ thuật:
+  - **Sức chịu tải Rc,d** (TCVN 10304:2014 Đ.7.1.11), **móng khối quy ước + lún Đ.7.4.4**
+    (Se đàn hồi thân cọc + lún khối theo Boussinesq, β=0,8) — `core/tcvn.py`.
+  - **Cọc chịu ngang** theo phương pháp "m" (Phụ lục A) + **hiệu ứng nhóm** — `core/ssi_engine.py`.
+  - **Thiết kế kết cấu đài** TCVN 5574:2018 (uốn, chọc thủng, cắt 1 phương) — `core/cap_design.py`.
+  Các phân tích này cần số liệu địa chất/vật liệu; thiếu thì báo "CHƯA KIỂM" thay vì bỏ qua.
+  Thiết kế chi tiết cuối cùng vẫn nên đối chứng **MCOC/FEM đầy đủ**.
 - **Đơn vị (theo MCOC)**: lực = **Tấn (T)**, momen = **T·m**. Áp dụng cho cả tải
   trọng lẫn [Po]/[Ct]/[M].
 - **Hai tab**: *(1) Tương tác (Interactive)* xử lý 1 hồ sơ; *(2) Hàng loạt (Batch)*

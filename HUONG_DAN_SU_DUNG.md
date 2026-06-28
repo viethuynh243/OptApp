@@ -31,7 +31,7 @@ flowchart LR
 
 ### Cách 1 — Dùng bộ cài (khuyến nghị)
 
-1. Chạy **`OptApp_Setup_1.1.0.exe`**.
+1. Chạy **`OptApp_Setup_1.10.0.exe`**.
 2. Làm theo trình cài đặt (chọn thư mục, tạo shortcut Desktop nếu muốn).
 3. Mở **OptApp** từ Start Menu hoặc Desktop.
 
@@ -187,4 +187,4 @@ python run_demo.py         REM Demo quét nhanh bằng bệ cứng (không cần
 
 ---
 
-*Phiên bản OptApp 1.1.0 — cập nhật 2026-06-16.*
+*Phiên bản OptApp 1.10.0 — cập nhật 2026-06-28.*

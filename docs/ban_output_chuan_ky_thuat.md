@@ -14,7 +14,7 @@
 | Công trình | Cầu …  — Mố/Trụ T… |
 | Hạng mục | Móng cọc bệ thấp |
 | Tiêu chuẩn áp dụng | TCVN 10304:2014 (móng cọc); TCVN 11823:2017 (cầu, LRFD); 22 TCN 18 (nếu dùng) |
-| Phần mềm | OptApp v1.1.0 (nội lực tính bằng MCOC) |
+| Phần mềm | OptApp v1.10.0 (nội lực tính bằng MCOC) |
 | Người tính / KT / ngày | … / … / 2026‑06‑14 |
 
 ## 2. SỐ LIỆU ĐẦU VÀO

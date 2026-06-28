@@ -899,9 +899,22 @@ class PlotCanvas:
         ax.add_patch(patches.Rectangle((0.68, ly), sw, sh, fill=False, edgecolor='#c0392b', lw=2.0))
         ax.text(0.708, ly + sh / 2, "tổ hợp chi phối", ha='left', va='center', fontsize=7.5 * fs, color='#333')
 
-        # Tổng hợp hình học R3/R4 + uốn R5/R6 (không đổi theo tổ hợp)
-        ax.text(0.0, bottom - 0.155, "   |   ".join(data.get('geom_summary', [])),
-                ha='left', va='top', fontsize=8 * fs, color='#222', fontweight='bold')
+        # Tổng hợp hình học R3/R4 + uốn R5/R6 + R7/R8 (không đổi theo tổ hợp).
+        # GÓI XUỐNG DÒNG theo bề rộng để KHÔNG bị cắt ngang khi đủ R3–R8 (≤~66 ký tự/dòng).
+        items = [s for s in data.get('geom_summary', []) if s]
+        gs_lines, cur = [], ""
+        for it in items:
+            cand = it if not cur else cur + "   |   " + it
+            if cur and len(cand) > 66:
+                gs_lines.append(cur)
+                cur = it
+            else:
+                cur = cand
+        if cur:
+            gs_lines.append(cur)
+        ax.text(0.0, bottom - 0.135, "\n".join(gs_lines),
+                ha='left', va='top', fontsize=7.5 * fs, color='#222',
+                fontweight='bold', linespacing=1.45)
 
         # KHÔNG tight_layout ở đây (đã đặt lề cố định ở trên) — tránh co dồn tích lũy.
         self.canvas.draw_idle()

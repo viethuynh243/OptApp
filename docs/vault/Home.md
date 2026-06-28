@@ -7,7 +7,7 @@ tags: [optapp, moc]
 
 # 🧭 OptApp — Bản đồ tri thức
 
-Vault tri thức cho **OptApp v1.2.0** (tối ưu bố trí cọc móng cầu). Tổ chức theo
+Vault tri thức cho **OptApp v1.10.0** (tối ưu bố trí cọc móng cầu). Tổ chức theo
 chủ đề; mỗi note một việc; liên kết `[[...]]` thể hiện nguyên nhân → hệ quả.
 
 > Mở vault: Obsidian → **Open folder as vault** → chọn `docs/vault`.

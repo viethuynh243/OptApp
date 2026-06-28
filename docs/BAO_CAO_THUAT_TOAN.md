@@ -2,7 +2,7 @@
 
 > Tài liệu giải thích **OptApp giải bài toán bố trí cọc như thế nào** — viết để người đọc lần đầu vẫn theo được: mỗi mục mở đầu bằng ý đời thường, rồi mới tới chi tiết kỹ thuật.
 > Nội dung: ① bài toán · ② cách mô hình hóa · ③ cách giải · ④ kết quả · ⑤ độ phức tạp · ⑥ kiểm chứng độ tin cậy.
-> Ứng dụng **OptApp v1.1.0** · Cập nhật 2026-06-16 · Mã nguồn Python 3 (xem *Phụ lục — Bản đồ mã nguồn*).
+> Ứng dụng **OptApp v1.10.0** · Cập nhật 2026-06-28 · Mã nguồn Python 3 (xem *Phụ lục — Bản đồ mã nguồn*).
 
 ---
 
@@ -370,5 +370,8 @@ Predictor = công thức đài cứng × hệ số hiệu chỉnh K, dùng để
 | Sinh tọa độ từ 5 con số | [`core/generator.py`](../core/generator.py) | `generate_coords` |
 | Quét lưới (mốc đối chứng/demo) | [`core/optimizer.py`](../core/optimizer.py) | `run_optimization` |
 | Tinh chỉnh Pareto (Refine) | [`core/refine_optimizer.py`](../core/refine_optimizer.py) | `solve_min_scale` |
+| Sức chịu tải + lún TCVN 10304 | [`core/tcvn.py`](../core/tcvn.py) | `design_axial_capacity`, `resolve_gamma_k`, `equivalent_block`, `settlement` (Đ.7.4.4 — Se + Boussinesq) |
+| Thiết kế đài + SSI | [`core/cap_design.py`](../core/cap_design.py) · [`core/ssi_engine.py`](../core/ssi_engine.py) | `design_cap` (uốn/chọc thủng/cắt Qb đầy đủ), `analyze` (ngang "m" Phụ lục A) |
+| Giao diện — composition (Plan 023) | [`ui/main_window.py`](../ui/main_window.py) (vỏ) · `ui/controllers/` · `ui/tabs/` · `ui/widgets/` | MainWindow = shared context + delegator |
 | Báo cáo & biểu đồ | [`io_handlers/report_writer.py`](../io_handlers/report_writer.py) · [`ui/plot_canvas.py`](../ui/plot_canvas.py) | — |
 | Kiểm chứng (Mục 5) | `tests/validate_mcoc.py` · `tests/validate_method.py` · `tests/sweep_constraints.py` | — |

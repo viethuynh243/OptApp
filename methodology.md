@@ -1,6 +1,6 @@
 # 📘 TÀI LIỆU KỸ THUẬT DỰ ÁN: OptApp — Tối Ưu Hóa Bố Trí Cọc Móng Cầu
 
-> **Phiên bản:** v1.1.0 (2026-06-16) — xem `CHANGELOG.md`. Nguồn version: `core/version.py`.
+> **Phiên bản:** v1.10.0 (2026-06-28) — xem `CHANGELOG.md`. Nguồn version: `core/version.py`.
 > **Tổ chức:** TEDI – Tổng Công ty Tư vấn Thiết kế GTVT
 > **Ngôn ngữ:** Python 3.x
 > **Giao diện:** Tkinter + TkinterDnD2
@@ -55,22 +55,31 @@ OptApp/
 │   ├── nsga2_optimizer.py      # ENGINE CHÍNH — tối ưu đa mục tiêu NSGA-II
 │   ├── mcoc_runner.py          # Chạy MCOC_Batch.exe (subprocess) & đọc kết quả
 │   ├── blackbox.py             # Cầu nối đánh giá: gọi MCOC thực (hoặc mock xem trước)
-│   ├── mechanics.py            # Kiểm tra ràng buộc hình học + nội lực (R1–R6)
+│   ├── mechanics.py            # Kiểm tra ràng buộc hình học + nội lực (R1–R8)
 │   ├── generator.py            # Sinh tọa độ lưới cọc (Kiểu A & B)
 │   ├── refine_optimizer.py     # Tinh chỉnh Pareto + kiểm chứng MCOC (tính năng Refine)
 │   ├── constants.py            # Hằng số & mặc định dùng chung (3d/6d, dải nx/ny…)
 │   ├── rigid_cap.py            # Công thức bệ cứng (phụ trợ: heatmap, mock, dự báo)
+│   ├── tcvn.py                 # TCVN 10304:2014: Rc,d (Đ.7.1.11), móng khối + lún (Đ.7.4.4)
+│   ├── cap_design.py           # Thiết kế đài TCVN 5574:2018 (uốn/chọc thủng/cắt/STM)
+│   ├── ssi_engine.py           # Tương tác đất–cọc (NumPy): dọc trục + ngang "m" + lún + nhóm
+│   ├── cap_suggest.py          # Gợi ý nới bệ tối thiểu khi bệ chật
+│   ├── ext/                    # Gói MỞ RỘNG (R7/R8, quét đường kính, thu bệ) — không sửa lõi
 │   └── optimizer.py            # Quét lưới nhanh bằng bệ cứng (chỉ cho bản demo)
 │
 ├── io_handlers/                # Xử lý dữ liệu vào/ra
 │   ├── mcoc_writer.py          # Sinh file input MCOC từ template + tọa độ mới
 │   ├── file_io.py              # Đọc CSV/TXT/MCOC; xuất TXT kết quả
-│   ├── report_writer.py        # Xuất báo cáo kỹ thuật (.md/.txt): R1–R6, hệ số sử dụng
+│   ├── report_writer.py        # Báo cáo kỹ thuật (.md/.pdf): R1–R8, lún Đ.7.4.4, ngang Mục 6c
 │   └── export_utils.py         # Xuất Excel, PDF, PNG
 │
-└── ui/                         # Giao diện người dùng
-    ├── main_window.py           # Cửa sổ chính (Tab Tương tác + Hàng loạt + Refine)
-    └── plot_canvas.py           # Vẽ mặt bằng cọc (Matplotlib nhúng)
+└── ui/                         # Giao diện — COMPOSITION (Plan 023)
+    ├── main_window.py          # VỎ điều phối (~512 dòng): giữ state + dựng khung + delegator
+    ├── controllers/            # Logic: params, loads, file_ops, results, simulation, optimization
+    ├── tabs/                   # Dựng giao diện: interactive_tab, batch_tab
+    ├── widgets/                # Tiện ích GUI: tooltip, widget_utils
+    ├── constants.py, strings.py# Hằng số + nhãn UI dùng chung
+    └── plot_canvas.py          # Vẽ mặt bằng/3D/SSI/đài (Matplotlib nhúng)
 ```
 
 ### Sơ đồ luồng dữ liệu
@@ -966,4 +975,4 @@ python tests/test_nsga2.py   # Kiểm thử engine NSGA-II
 ---
 
 *Tài liệu kỹ thuật OptApp — đồng bộ với mã nguồn.*
-*Phiên bản ứng dụng: v1.1.0 · Cập nhật tài liệu: 2026-06-16 (MCOC bắt buộc; Batch theo MCOC; sửa UI/công thức — xem CHANGELOG.md).*
+*Phiên bản ứng dụng: v1.10.0 · Cập nhật tài liệu: 2026-06-28 (tách UI composition; bám sát TCVN: lún Đ.7.4.4, γk theo số cọc, cắt 1 phương, ngang "m" — xem CHANGELOG.md).*

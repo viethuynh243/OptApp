@@ -1,6 +1,6 @@
 # OptApp - Tối ưu hóa bố trí cọc móng cầu
 
-**Phiên bản: v1.3.0** (2026-06-18) · xem [CHANGELOG.md](CHANGELOG.md). Nguồn version: `core/version.py`.
+**Phiên bản: v1.10.0** (2026-06-28) · xem [CHANGELOG.md](CHANGELOG.md). Nguồn version: `core/version.py`.
 
 Ứng dụng tối ưu hóa bố trí cọc móng cầu trên bệ chữ nhật. Mục tiêu: tìm phương án có **số cọc ít nhất** mà vẫn đảm bảo điều kiện chịu lực và thi công.
 
