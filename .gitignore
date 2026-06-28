@@ -20,6 +20,17 @@ packaging/*.zip
 # Tài liệu XUẤT RA & file CHUYỂN ĐỔI — chỉ lưu LOCAL, KHÔNG đẩy lên git.
 # Chỉ commit FILE KỸ THUẬT (mã nguồn .py, tài liệu nguồn .md, script đóng gói).
 # PDF đã bị bỏ qua bởi "*.pdf" ở trên; thêm các file trung gian khi chuyển đổi:
-*_tmp.html        # HTML tạm do packaging/md_to_pdf.py sinh ra
-_*.png            # ảnh tạm khi rasterize PDF để kiểm tra
+# HTML tạm do packaging/md_to_pdf.py sinh ra
+*_tmp.html
+# ảnh tạm khi rasterize PDF để kiểm tra
+_*.png
+
+# Artifacts của test/harness — chỉ LOCAL, tự sinh lại khi chạy harness
+# (LƯU Ý: .gitignore KHÔNG hỗ trợ comment cùng dòng với pattern — để riêng dòng)
+# log harness (_sc.log, _vm.log, _validate_mcoc.log)
+*.log
+# thư mục làm việc tạm của harness
+tests/_work/
+# mốc snapshot regression (theo máy dev/numpy)
+tests/_ui_regression_golden.json
 

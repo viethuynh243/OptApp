@@ -123,7 +123,14 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
         L.append(f"| He so dieu kien lam viec | g0 | {_fmt(g.get('gamma_0',0),3)} |")
         L.append(f"| He so tin cay tam quan trong | gn | {_fmt(g.get('gamma_n',0),3)} |")
         L.append(f"| He so tin cay theo dat | gk | {_fmt(g.get('gamma_k',0),3)} |")
+        gk_used = g.get('gamma_k', 0) or 0
+        gk_rec = tcvn.resolve_gamma_k(n)
+        L.append(f"| gk khuyen nghi theo so coc (n={n}) | gk_tcvn | {_fmt(gk_rec,3)} |")
         L.append(f"| => SCT nen thiet ke | Rc,d | {_fmt(Po,1)} T |")
+        if gk_used and abs(gk_used - gk_rec) > 1e-6:
+            L.append(f"\n> LUU Y (Dieu 7.1.11): gk dang dung = {_fmt(gk_used,3)} KHAC gk khuyen "
+                     f"nghi theo so coc thuc te ({_fmt(gk_rec,3)}, n={n} coc). Nen cap nhat gk "
+                     "roi tinh lai Rc,d=[Po] cho dung tieu chuan.")
         L.append("")
     else:
         L.append("> [Po]/[Ct] duoc NHAP truc tiep, coi la SUC CHIU TAI THIET KE Rc,d/Rt,d. "
@@ -293,6 +300,8 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
         L.append(f"| Chieu dai khoi quy uoc | Lqu | {_fmt(block['L_qu'])} m |")
         L.append(f"| Dien tich day khoi | Aqu | {_fmt(block['A_qu'])} m2 |")
         L.append(f"| Do sau day khoi | Df | {_fmt(block['base_depth'])} m |")
+        if block.get('a_capped_2d'):
+            L.append(f"| Mo rong moi ben | a | {_fmt(block.get('a_side',0))} m (da chan a<=2d, dat dinh yeu IL>0,6) |")
         L.append("")
         st = tcvn.settlement(coords, loads, params)
         if st.get('evaluated'):
@@ -300,8 +309,13 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
             Sgh = st.get('S_limit')
             kl = '-' if Sgh is None else ('DAT' if st.get('ok') else 'KHONG')
             L.append(f"- Ap luc gay lun day khoi quy uoc: p_gl = {_fmt(st['p_gl'],2)} T/m2.")
-            L.append(f"- Do lun tinh toan S = **{_fmt(S_mm,1)} mm** "
-                     f"(phuong phap cong lun tung lop, Phu luc C; beta=0,8).")
+            L.append(f"- Do lun tinh toan **S = {_fmt(S_mm,1)} mm** = Se + S_khoi "
+                     f"(Dieu 7.4.4: bien dang dan hoi than coc + lun khoi quy uoc).")
+            se_note = "" if st.get('se_evaluated') else " (bo qua: thieu E_b/dien tich coc)"
+            L.append(f"    - Se (dan hoi than coc) = {_fmt(st.get('S_e',0)*1000.0,2)} mm{se_note};"
+                     f" S_khoi = {_fmt(st.get('S_block',0)*1000.0,1)} mm.")
+            L.append("    - S_khoi: cong lun tung lop theo TCVN 9362:2012 (beta=0,8), ung suat "
+                     "tai tam khoi theo Boussinesq; vung nen toi khi sigma_z <= 0,2 sigma'vz.")
             if Sgh is not None:
                 L.append(f"- Do lun gioi han S_gh = {_fmt(Sgh*1000.0,1)} mm -> **{kl}**.")
             else:
@@ -315,6 +329,37 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
                  "va do lun S <= S_gh. Hay bo sung: `pile_length` (Lc), `phi_tb`, "
                  "`soil_below` (lop dat duoi mui), `S_LIMIT`.")
     L.append("")
+
+    # 6c. Kiểm tra cọc chịu NGANG theo phương pháp "m" (TCVN 10304:2014 Phụ lục A)
+    try:
+        from core import ssi_engine
+        _hmag = lambda ld: (float(ld.get('Hx', 0)) ** 2 + float(ld.get('Hy', 0)) ** 2) ** 0.5
+        gload = max(loads, key=_hmag) if loads else None
+        if gload is not None and _hmag(gload) > 1e-9:
+            ssi = ssi_engine.analyze(coords, params, gload)
+            lat = ssi.get('lateral')
+            if lat:
+                model = ('phuong phap "m" (k = m.z.d, Phu luc A)'
+                         if lat.get('model') == 'm' else 'lo xo nen hang so k = ks.d')
+                L.append("## 6c. KIEM TRA COC CHIU NGANG  (TCVN 10304:2014, Phu luc A)\n")
+                L.append(f"Mo hinh nen ngang: {model}. Coc bat loi nhat: #{lat.get('pile_index', 0) + 1}"
+                         f"{' (co xet hieu ung nhom, p-mult=' + _fmt(lat.get('pmult', 1), 2) + ')' if ssi['meta'].get('group_effect') else ''}.")
+                L.append("")
+                L.append("| Dai luong | Ky hieu | Gia tri |")
+                L.append("|---|---|---:|")
+                L.append(f"| Luc ngang dau coc (bat loi) | H_coc | {_fmt(lat['H_pile'], 2)} T |")
+                L.append(f"| Chuyen vi ngang dau coc | y0 | {_fmt(lat['y_head'] * 1000.0, 2)} mm |")
+                L.append(f"| Momen uon lon nhat than coc | M_max | {_fmt(lat['M_max'], 2)} T.m |")
+                L.append(f"| Tham so dac trung | beta | {_fmt(lat['beta'], 3)} 1/m |")
+                L.append("")
+                if ssi['meta'].get('Lc_illustrative'):
+                    L.append("> LUU Y: chua khai bao chieu dai coc Lc -> dung gia tri minh hoa; "
+                             "ket qua chuyen vi/momen ngang chi tham khao.")
+                L.append("> R7 (Hmax <= [H]) o Muc 6 la kiem SANG LOC theo suc chiu luc ngang cho "
+                         "phep; muc nay bo sung CHUYEN VI dau coc + MOMEN than coc theo Phu luc A.")
+                L.append("")
+    except Exception:
+        pass
 
     # 7. Kết luận
     status = "DAT" if cfg.get('ok', True) else "KHONG DAT"

@@ -86,6 +86,18 @@ def parse_input_file(filepath):
             params['L_Y'] = By
             params['H_cap'] = float(parts_l2[10])
 
+        # Dòng 3: đặc trưng vật liệu CHUNG (Ev.uon Er.uon Ev.nen Er.nen m.day m.be m).
+        # Lấy mô đun bê tông Eb (cột 0) và HỆ SỐ NỀN m (cột 6, T/m⁴) cho phương pháp
+        # "m" theo TCVN 10304 Phụ lục A. Đặt SỚM để khối cọc bên dưới không ghi đè.
+        if len(lines) > 2:
+            parts_l3 = lines[2].split()
+            if len(parts_l3) >= 7:
+                try:
+                    params['E_b'] = float(parts_l3[0])
+                    params['m_soil'] = float(parts_l3[6])
+                except ValueError:
+                    pass
+
         # Tổ hợp tải trọng bắt đầu từ dòng 4 (index 3)
         i = 3
         while i < len(lines):
@@ -168,12 +180,18 @@ def parse_input_file(filepath):
                 if d_pile is None:
                     d_pile = a
                     p_limit = Po
-                    params['E_b'] = Eb
-                    params['m_soil'] = m_soil
+                    # setdefault: KHÔNG ghi đè Eb/m đã đọc từ dòng vật liệu chung (dòng 3)
+                    params.setdefault('E_b', Eb)
+                    params.setdefault('m_soil', m_soil)
                     params['F_o'] = Fo
                     params['J_o'] = Jo
                     params['C_o'] = Co
                     params['C_t'] = Ct
+                    # Chiều dài cọc Lc = dòng i+1 của khối cọc (H trong "Lo H Bpx...").
+                    try:
+                        params['pile_length'] = float(lines[i + 1].strip())
+                    except (ValueError, IndexError):
+                        pass
 
                 original_coords.append([X, Y])
                 # Skip to next pile block

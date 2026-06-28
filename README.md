@@ -97,7 +97,18 @@ Kết quả giao nộp luôn từ MCOC. Công thức **bệ cứng** (`core/rigi
 ## Cấu trúc chính của dự án
 
 - `main.py` - điểm khởi chạy GUI
-- `ui/main_window.py` - giao diện người dùng và điều khiển chính
+- `ui/main_window.py` - VỎ điều phối (composition): giữ state chia sẻ, dựng khung 2 tab + menu, tạo & nối các component bên dưới (giữ delegator mỏng cho API ngoài)
+- `ui/constants.py` - hằng số giao diện (geometry, preset NSGA-II)
+- `ui/strings.py` - chuỗi/khóa UI dùng chung (nhãn phương án, khóa chế độ xem) — nguồn duy nhất để khớp chính xác giữa nơi đặt và nơi kiểm tra
+- `ui/widgets/` - widget/tiện ích GUI dùng chung: `tooltip.py`, `widget_utils.py`
+- `ui/controllers/` - logic theo trách nhiệm:
+  - `params.py` - tham số bài toán + TCVN + nạp DEMO
+  - `loads.py` - CRUD tổ hợp tải trọng
+  - `file_ops.py` - nạp/xuất file & làm mới
+  - `results.py` - render kết quả + KPI + combobox
+  - `simulation.py` - vẽ mô phỏng + dữ liệu audit R1–R8
+  - `optimization.py` - chạy NSGA-II / mở rộng / tinh chỉnh (thread nền)
+- `ui/tabs/` - dựng giao diện từng tab: `interactive_tab.py` (Tab 1), `batch_tab.py` (Tab 2 + chạy hàng loạt)
 - `ui/plot_canvas.py` - vẽ mô phỏng bố trí cọc
 - `core/constants.py` - hằng số & giá trị mặc định dùng chung
 - `core/rigid_cap.py` - mô hình bệ cứng (nguồn duy nhất của công thức nội lực cọc)

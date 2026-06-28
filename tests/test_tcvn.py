@@ -9,6 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
+import pytest
 from core import tcvn
 from core import constants
 
@@ -89,6 +90,53 @@ def test_soft_6d_default_off():
     print("OK  ENFORCE_SPACING_MAX = False (6d la canh bao mem)")
 
 
+def test_resolve_gamma_k_table():
+    """γk theo số cọc (Đ.7.1.11): 1-5→1.75, 6-10→1.65, 11-20→1.55, ≥21→1.40."""
+    assert tcvn.resolve_gamma_k(3) == 1.75
+    assert tcvn.resolve_gamma_k(6) == 1.65
+    assert tcvn.resolve_gamma_k(10) == 1.65
+    assert tcvn.resolve_gamma_k(11) == 1.55
+    assert tcvn.resolve_gamma_k(25) == 1.40
+    # Cột thử tải tĩnh (trong ngoặc)
+    assert tcvn.resolve_gamma_k(3, by_static_test=True) == 1.60
+    assert tcvn.resolve_gamma_k(25, by_static_test=True) == 1.25
+    # apply_design_capacities tự suy γk từ n_piles khi KHÔNG nhập tay GAMMA_K
+    p = {'D_PILE': 1.2, 'R_C_K': 1000.0, 'n_piles': 8}   # 8 cọc -> γk=1.65
+    tcvn.apply_design_capacities(p)
+    assert abs(p['P_LIMIT'] - (1.15 / 1.15) * (1000.0 / 1.65)) < 1e-6, p['P_LIMIT']
+    print("OK  resolve_gamma_k khop bang TCVN 10304 + auto theo n_piles")
+
+
+def test_equivalent_block_2d_cap():
+    """Chặn a≤2d cho đất dính yếu IL>0,6 (Đ.7.4.4): bật cờ -> spread nhỏ lại."""
+    coords = np.array([[-1.8, -3.0], [1.8, 3.0]])
+    base = {'D_PILE': 1.2, 'pile_length': 30.0, 'phi_tb': 30.0}   # a = 30·tan(7.5°) ≈ 3.95 m > 2d=2.4
+    b_off = tcvn.equivalent_block(coords, base)
+    b_on = tcvn.equivalent_block(coords, {**base, 'soft_clay_below': True})
+    assert b_off['a_capped_2d'] is False
+    assert b_on['a_capped_2d'] is True
+    assert b_on['a_side'] == 2.0 * 1.2                  # bị kẹp về 2d
+    assert b_on['B_qu'] < b_off['B_qu']                 # khối nhỏ lại -> lún lớn hơn (an toàn)
+    print("OK  chan a<=2d khi dat dinh yeu (soft_clay_below)")
+
+
+def test_settlement_includes_Se_and_boussinesq():
+    """Lún = Se + lún khối (Boussinesq). Se>0 khi có E_b; σz dùng Boussinesq (≤ p_gl)."""
+    coords = np.array([[-1.8, -3.0], [1.8, -3.0], [-1.8, 3.0], [1.8, 3.0]])
+    p = {'D_PILE': 1.2, 'pile_length': 20.0, 'phi_tb': 24.0, 'cap_depth': 2.0,
+         'E_b': 2.7e6, 'F_o': 1.131,     # mô đun thân cọc (T/m²) + diện tích cọc (m²)
+         'soil_below': [{'h': 3.0, 'E': 3000.0}, {'h': 5.0, 'E': 5000.0}],
+         'S_LIMIT': 0.10}
+    loads = [{'N': 2000.0}]
+    st = tcvn.settlement(coords, loads, p)
+    assert st['evaluated']
+    assert st['se_evaluated'] is True and st['S_e'] > 0
+    assert st['S'] == pytest.approx(st['S_e'] + st['S_block'], rel=1e-9)
+    # σz lớp đầu phải nhỏ hơn p_gl (suy giảm theo độ sâu) và > 0
+    assert 0 < st['layers'][0]['sigma_z'] < st['p_gl']
+    print(f"OK  lun = Se({st['S_e']*1000:.2f}mm) + khoi({st['S_block']*1000:.1f}mm) Boussinesq")
+
+
 if __name__ == '__main__':
     test_design_axial_capacity()
     test_apply_design_capacities_from_rck()
@@ -96,4 +144,7 @@ if __name__ == '__main__':
     test_equivalent_block_and_settlement()
     test_settlement_missing_data()
     test_soft_6d_default_off()
+    test_resolve_gamma_k_table()
+    test_equivalent_block_2d_cap()
+    test_settlement_includes_Se_and_boussinesq()
     print("\n== TAT CA TEST TCVN DAT ==")
