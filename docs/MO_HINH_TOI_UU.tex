@@ -1,0 +1,230 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T5]{fontenc}
+\usepackage[vietnamese]{babel}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage[margin=2.4cm]{geometry}
+\usepackage{enumitem}
+\usepackage{xcolor}
+
+% ---- Ký hiệu chuẩn hóa (macro) ------------------------------------------
+\newcommand{\Real}{\mathbb{R}}
+\newcommand{\Integer}{\mathbb{Z}}
+\newcommand{\Iset}{\mathcal{I}}      % tập cọc
+\newcommand{\Kset}{\mathcal{K}}      % tập tổ hợp tải
+\newcommand{\Tset}{\mathcal{T}}      % tập kiểu lưới
+\newcommand{\Dset}{\mathcal{D}}      % tập đường kính
+\newcommand{\Hset}{\mathcal{H}}      % ràng buộc cứng
+\newcommand{\Sset}{\mathcal{S}}      % ràng buộc mềm
+\newcommand{\Feas}{\Omega}           % miền khả thi
+\newcommand{\pos}[1]{\left[#1\right]^{+}}  % phần dương
+\newcommand{\Pall}{\overline{P}}     % [Po]
+\newcommand{\Tall}{\overline{T}}     % [Ct]
+\newcommand{\Mall}{\overline{M}}     % [M]
+\newcommand{\Hall}{\overline{H}}     % [H]
+\newcommand{\Pmax}{P_{\max}}
+\newcommand{\Pmin}{P_{\min}}
+\newcommand{\Mxx}{M^{x}_{\max}}
+\newcommand{\Myy}{M^{y}_{\max}}
+\newcommand{\Hmx}{H_{\max}}
+\newcommand{\xvec}{\mathbf{x}}
+\newcommand{\Gen}{\mathbf{G}}        % toán tử sinh lưới
+\newcommand{\Mcoc}{\boldsymbol{\Psi}}% toán tử MCOC
+
+\title{\textbf{Mô hình tối ưu bố trí cọc móng cầu}\\[2pt]
+\large Quy hoạch đa mục tiêu có ràng buộc cứng -- mềm}
+\author{OptApp --- Mô tả toán học}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Bảng ký hiệu (chuẩn hóa)}
+
+\subsection*{Tập hợp và chỉ số}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Ký hiệu & Ý nghĩa \\
+\midrule
+$i \in \Iset=\{1,\dots,n\}$ & chỉ số cọc \\
+$k \in \Kset=\{1,\dots,K\}$ & chỉ số tổ hợp tải trọng \\
+$t \in \Tset=\{\mathrm{A},\mathrm{B}\}$ & kiểu lưới: A trực giao, B hoa mai (so le) \\
+$d \in \Dset=\{D_1,\dots,D_m\}$ & tập đường kính cọc (mô hình mở rộng) \\
+$r \in \Hset$, \; $q \in \Sset$ & chỉ số ràng buộc cứng / mềm \\
+\bottomrule
+\end{tabular}
+
+\subsection*{Tham số đầu vào (cho trước)}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Ký hiệu & Ý nghĩa & Đơn vị \\
+\midrule
+$D$ & đường kính cọc & m \\
+$L_x,\,L_y$ & kích thước bệ (cap) theo $x,y$ & m \\
+$c$ & khoảng cách an toàn tim cọc tới mép bệ (SAFE\_D) & m \\
+$\alpha_\ell=3,\ \alpha_u=6$ & hệ số khoảng cách tim cọc tối thiểu / tối đa & -- \\
+$\Pall$ & sức chịu nén cho phép $[P_o]$ (hoặc $R_{c,d}$ theo TCVN) & T \\
+$\Tall$ & sức chịu nhổ cho phép $[C_t]$ & T \\
+$\Mall$ & mômen uốn cho phép $[M]$ & T$\cdot$m \\
+$\Hall$ & lực ngang cho phép $[H]$ & T \\
+$N_k,H^x_k,H^y_k,M^x_k,M^y_k,M^z_k$ & thành phần tổ hợp tải $k$ & T, T$\cdot$m \\
+$\gamma_0,\gamma_n,\gamma_k$ & hệ số an toàn TCVN 10304:2014 (Đ.7.1.11) & -- \\
+\bottomrule
+\end{tabular}
+
+\subsection*{Biến quyết định}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Ký hiệu & Miền & Ý nghĩa \\
+\midrule
+$t$ & $\Tset$ & kiểu lưới \\
+$n_x$ & $\{1,\dots,n_x^{\max}\}\subset\Integer$ & số cột cọc \\
+$n_y$ & $\{1,\dots,n_y^{\max}\}\subset\Integer$ & số hàng cọc \\
+$s_x$ & $[\alpha_\ell D,\ \alpha_u D]\subset\Real$ & bước lưới theo $x$ \\
+$s_y$ & $[\alpha_\ell D,\ \alpha_u D]\subset\Real$ & bước lưới theo $y$ \\
+\bottomrule
+\end{tabular}
+
+\medskip
+\noindent Véc-tơ quyết định: $\xvec=(t,n_x,n_y,s_x,s_y)$ (mô hình mở rộng: $\xvec=(d,t,n_x,n_y,s_x,s_y)$).
+
+\subsection*{Biến trạng thái (dẫn xuất từ $\xvec$)}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Ký hiệu & Ý nghĩa \\
+\midrule
+$\mathbf{p}_i=(x_i,y_i)$ & tọa độ tim cọc $i$ \\
+$\mathcal{C}=\{\mathbf{p}_i\}_{i\in\Iset}$ & tập tọa độ; $n=|\mathcal{C}|$ là số cọc \\
+$s^{\mathrm{diag}}=\sqrt{(s_x/2)^2+s_y^2}$ & khoảng cách đường chéo (chỉ kiểu B) \\
+$P_i^{k}$ & phản lực dọc trục cọc $i$ ở tổ hợp $k$ (dương = nén) \\
+$\Pmax,\Pmin$ & lực nén lớn nhất / lực kéo lớn nhất trên mọi $(i,k)$ \\
+$\Mxx,\Myy$ & mômen đầu cọc lớn nhất quanh $x,y$ \\
+$\Hmx$ & lực ngang tổng hợp lớn nhất trên một cọc \\
+$\Phi(\mathcal{C})$ & diện tích bao (footprint) của nhóm cọc \\
+\bottomrule
+\end{tabular}
+
+\section{Toán tử mô hình}
+
+\paragraph{Sinh tọa độ.} Toán tử $\Gen:\xvec\mapsto\mathcal{C}$ đặt lưới đối xứng quanh tâm bệ:
+\begin{equation}
+x_\iota=\Big(\iota-\tfrac{n_x-1}{2}\Big)s_x,\quad
+y_\jmath=\Big(\jmath-\tfrac{n_y-1}{2}\Big)s_y,\qquad
+\iota=0,\dots,n_x-1,\ \jmath=0,\dots,n_y-1,
+\end{equation}
+với kiểu B các hàng lẻ giảm một cọc và tự lệch $s_x/2$ (bố trí hoa mai).
+
+\paragraph{Đánh giá nội lực (oracle MCOC).} Toán tử chính xác $\Mcoc$ trả phản lực cọc:
+\begin{equation}
+\big\{P_i^{k}\big\}_{i\in\Iset,\,k\in\Kset}=\Mcoc\!\big(\mathcal{C};\,\{N_k,H^x_k,H^y_k,M^x_k,M^y_k,M^z_k\}_{k\in\Kset}\big),
+\end{equation}
+\begin{equation}
+\Pmax=\max_{i,k}P_i^{k},\qquad \Pmin=\min_{i,k}P_i^{k}.
+\end{equation}
+$\Mcoc$ là \emph{hộp đen} (không khả vi, không lồi) $\Rightarrow$ bài toán phải giải bằng metaheuristic.
+
+\section{Hàm mục tiêu}
+
+Bài toán \textbf{đa mục tiêu}, cùng cực tiểu hóa hai mục tiêu:
+\begin{equation}
+\min_{\xvec\in\Feas}\ \mathbf{F}(\xvec)=\big(f_1(\xvec),\,f_2(\xvec)\big),
+\end{equation}
+\begin{equation}
+f_1(\xvec)=n \quad\text{(số cọc --- chi phí vật liệu \& thi công)},
+\end{equation}
+\begin{equation}
+f_2(\xvec)=
+\begin{cases}
+\Phi(\mathcal{C}) & \text{chế độ ``bệ gọn'' (tiết kiệm bê tông bệ)},\\[3pt]
+\Pmax & \text{chế độ ``an toàn'' (tăng dự trữ chịu lực)}.
+\end{cases}
+\end{equation}
+Nghiệm là \textbf{tập Pareto} chứ không phải một điểm; mục tiêu phụ $f_2$ do người dùng chọn.
+
+\paragraph{Mục tiêu mở rộng.} Khi đường kính là biến, hàm mục tiêu thay bằng \emph{chi phí vật liệu} (xấp xỉ thể tích bê tông cọc trên một mét dài):
+\begin{equation}
+\min_{d\in\Dset}\ \mathcal{V}(\xvec)=n\cdot\frac{\pi d^{2}}{4},
+\end{equation}
+đồng hạng thì ưu tiên ít cọc hơn ($\min n$).
+
+\section{Ràng buộc cứng (hard constraints)}
+Ràng buộc cứng \emph{bắt buộc} thỏa; vi phạm $\Rightarrow$ phương án \emph{bất khả thi}. Mỗi ràng buộc viết dạng chuẩn $g_r(\xvec)\le 0$.
+
+\begin{equation}
+\begin{aligned}
+\text{(H1) Tồn tại cọc:}\quad & g_1 = 1-n \le 0,\\
+\text{(H2) Khoảng cách tối thiểu (TCVN, BẮT BUỘC):}\quad & g_2 = \alpha_\ell D - s^{\star} \le 0,\\
+\text{(H3) Mép bệ theo $x$:}\quad & g_3 = \max_i|x_i|+c-\tfrac{L_x}{2}\le 0,\\
+\text{(H4) Mép bệ theo $y$:}\quad & g_4 = \max_i|y_i|+c-\tfrac{L_y}{2}\le 0,\\
+\text{(H5) Sức chịu nén:}\quad & g_5 = \Pmax-\Pall \le 0,\\
+\text{(H6) Sức chịu nhổ ($\Tall>0$):}\quad & g_6 = -\Tall-\Pmin \le 0,\\
+\text{(H7) Mômen uốn ($\Mall>0$):}\quad & g_7 = \max(\Mxx,\Myy)-\Mall \le 0,\\
+\text{(H8) Lực ngang ($\Hall>0$):}\quad & g_8 = \Hmx-\Hall \le 0,\\
+\text{(H9) Tương tác $P$--$M$:}\quad & g_9 = \dfrac{\Pmax}{\Pall}+\dfrac{\max(\Mxx,\Myy)}{\Mall}-1 \le 0.
+\end{aligned}
+\end{equation}
+trong đó $s^\star=\min\{s_x,s_y\}$ với kiểu A, và $s^\star=\min\{s_x,\,s^{\mathrm{diag}}\}$ với kiểu B (cặp gần nhất là đường chéo). H8, H9 được kích hoạt ở luồng mở rộng (R7/R8).
+
+\paragraph{Miền khả thi.}
+\begin{equation}
+\Feas=\big\{\xvec:\ g_r(\xvec)\le 0,\ \forall r\in\Hset\big\},\qquad
+\Hset=\{1,\dots,9\}.
+\end{equation}
+
+\section{Ràng buộc mềm (soft constraints)}
+Ràng buộc mềm \emph{không loại} phương án mà bị \emph{phạt} (preference); biểu diễn dạng $\tilde{g}_q(\xvec)\le 0$.
+
+\begin{equation}
+\begin{aligned}
+\text{(S1) Khoảng cách tối đa $\le 6D$:}\quad & \tilde{g}_1 = s^{\dagger}-\alpha_u D \le 0,\\
+\text{(S2) Tính đều/đối xứng lưới:}\quad & \text{áp đặt cấu trúc bởi }\Gen\ (\text{không phạt thêm}),
+\end{aligned}
+\end{equation}
+với $s^\dagger=\max\{s_x,s_y\}$ (kiểu A) hoặc $\max\{s_x,s^{\mathrm{diag}}\}$ (kiểu B). S1 là \emph{quy ước thực hành}: chỉ kích hoạt khi cờ \texttt{ENFORCE\_SPACING\_MAX} bật, ngược lại chỉ cảnh báo.
+
+\section{Vô hướng hóa vi phạm và quan hệ trội}
+
+\paragraph{Vi phạm cứng (chuẩn hóa không thứ nguyên).}
+\begin{equation}
+\Theta(\xvec)=\sum_{r\in\Hset}\frac{\pos{g_r(\xvec)}}{\rho_r},\qquad
+\pos{a}=\max(0,a),
+\end{equation}
+với $\rho_r$ là đại lượng giới hạn tương ứng ($\rho_5=\Pall$, $\rho_3=L_x/2,\dots$) đưa mọi thành phần về cùng thang $\mathcal{O}(1)$. Phương án \textbf{khả thi} $\iff \Theta(\xvec)=0$.
+
+\paragraph{Phạt mềm (gộp vào mục tiêu phụ).}
+\begin{equation}
+\Pi(\xvec)=\sum_{q\in\Sset} w_q\,\frac{\pos{\tilde{g}_q(\xvec)}}{\tilde{\rho}_q},\qquad
+f_2^{\text{aug}}(\xvec)=f_2(\xvec)\big(1+\Pi(\xvec)\big),
+\end{equation}
+với $w_q\ge 0$ trọng số ưu tiên. Khi mọi ràng buộc mềm thỏa thì $\Pi=0$ và $f_2^{\text{aug}}=f_2$.
+
+\paragraph{Quan hệ trội có ràng buộc (constrained-domination).}
+$\xvec^{(a)}\prec\xvec^{(b)}$ khi và chỉ khi
+\begin{equation}
+\begin{cases}
+\Theta_a=0\ \wedge\ \Theta_b>0, & \text{(khả thi thắng bất khả thi)}\\[3pt]
+0<\Theta_a<\Theta_b, & \text{(ít vi phạm cứng hơn thắng)}\\[3pt]
+\Theta_a=\Theta_b=0\ \wedge\ \mathbf{F}^{\text{aug}}(\xvec^{(a)})\preceq_{\mathrm{Pareto}}\mathbf{F}^{\text{aug}}(\xvec^{(b)}), & \text{(cả hai khả thi $\to$ Pareto)}
+\end{cases}
+\end{equation}
+với $\mathbf{F}^{\text{aug}}=(f_1,f_2^{\text{aug}})$. Tập nghiệm là
+$\mathcal{P}=\{\xvec\in\Feas:\nexists\,\xvec'\in\Feas,\ \xvec'\prec\xvec\}$.
+
+\section{Phát biểu gọn của mô hình}
+
+\begin{equation}
+\boxed{
+\begin{aligned}
+&\min_{\xvec}\quad \mathbf{F}^{\text{aug}}(\xvec)=\Big(\,n,\ \ f_2(\xvec)\,[1+\Pi(\xvec)]\,\Big)\\[4pt]
+\text{(cứng)}\quad &\text{s.t.}\quad g_r(\xvec)\le 0,\quad r\in\Hset=\{1,\dots,9\}\\[2pt]
+\text{(mềm)}\quad &\phantom{\text{s.t.}}\quad \tilde{g}_q(\xvec)\le 0\ \text{(phạt, không bắt buộc)},\quad q\in\Sset\\[2pt]
+&\phantom{\text{s.t.}}\quad t\in\Tset,\ n_x,n_y\in\Integer_{+},\ s_x,s_y\in[\alpha_\ell D,\alpha_u D]\\[2pt]
+&\phantom{\text{s.t.}}\quad \mathcal{C}=\Gen(\xvec),\ \{P_i^k\}=\Mcoc(\mathcal{C};\{\ell_k\})
+\end{aligned}}
+\end{equation}
+
+\paragraph{Phương pháp giải.} Vì $\Mcoc$ là hộp đen không khả vi, bài toán đa mục tiêu, biến hỗn hợp, miền khả thi rất hẹp $\Rightarrow$ dùng \textbf{NSGA-II} (sắp xếp không-bị-trội nhanh + khoảng cách chen chúc + SBX/đột biến đa thức + chọn lọc $\mu{+}\lambda$), kèm \emph{gieo hạt tất định} (phủ vùng khả thi), \emph{cache} theo spec lưới và \emph{trần ngân sách} số lần gọi $\Mcoc$.
+
+\end{document}
