@@ -1,0 +1,9 @@
+# OptApp runtime dependencies. Cài: pip install -r requirements.txt
+# (tkinter là thư viện chuẩn của Python — KHÔNG cài qua pip;
+#  trên Linux cài gói hệ thống python3-tk.)
+numpy>=2.3.0
+matplotlib>=3.10.0
+tkinterdnd2>=0.4.0          # đổi theo `pip show tkinterdnd2`
+openpyxl>=3.1.5            # xuất Excel (io_handlers/export_utils.py)
+reportlab>=4.5.1          # xuất PDF (io_handlers/export_utils.py)
+Pillow>=11.2.0            # xử lý ảnh/icon (export_utils, packaging/make_icon.py)

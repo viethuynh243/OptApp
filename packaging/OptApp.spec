@@ -15,16 +15,22 @@ from PyInstaller.utils.hooks import collect_all
 
 # SPECPATH = thư mục chứa file .spec (packaging/); ROOT = gốc dự án (cha của nó)
 ROOT = os.path.dirname(SPECPATH)
-ICON = os.path.join(SPECPATH, "optapp.ico")
+ICON = os.path.join(SPECPATH, "tedi.ico")     # logo TEDI cho icon EXE
 
 # Gom trọn tkinterdnd2: data (thư viện tkdnd), binaries, hidden imports
 tkdnd_datas, tkdnd_binaries, tkdnd_hidden = collect_all("tkinterdnd2")
+
+# Bundle file logo TEDI vào _internal/packaging/ để runtime đặt icon cửa sổ
+icon_datas = [
+    (os.path.join(SPECPATH, "tedi.ico"), "packaging"),
+    (os.path.join(SPECPATH, "tedi_logo.png"), "packaging"),
+]
 
 a = Analysis(
     [os.path.join(ROOT, "main.py")],
     pathex=[ROOT],
     binaries=tkdnd_binaries,
-    datas=tkdnd_datas,
+    datas=tkdnd_datas + icon_datas,
     hiddenimports=tkdnd_hidden,
     hookspath=[],
     runtime_hooks=[],

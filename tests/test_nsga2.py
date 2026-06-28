@@ -9,6 +9,7 @@ Chay:
 import sys
 import os
 import numpy as np
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -39,16 +40,28 @@ def _check(cond, msg):
 
 
 # ============================================================================
+# Fixture dùng chung: kết quả NSGA-II (secondary='pmax' để các assert về mặt
+# Pareto theo (n, pmax) nhất quán). Hàm _make_res() để __main__ tự dựng lại.
+# ============================================================================
+def _make_res():
+    """Dựng kết quả NSGA-II dùng chung cho các test."""
+    return run_nsga2(PARAMS, LOADS, pop_size=30, n_gen=20, seed=1, secondary='pmax')
+
+
+@pytest.fixture
+def res():
+    """Fixture cấp kết quả NSGA-II cho các test cần kiểm Pareto/ràng buộc."""
+    return _make_res()
+
+
+# ============================================================================
 # Các test
 # ============================================================================
-def test_runs_and_recommends():
+def test_runs_and_recommends(res):
     """Engine chạy được và trả về phương án kiến nghị cùng số lần đánh giá > 0."""
     print("TEST 1: NSGA-II chay & dua ra phuong an kien nghi")
-    # secondary='pmax' de cac assert ve mat Pareto (n, pmax) ben duoi nhat quan
-    res = run_nsga2(PARAMS, LOADS, pop_size=30, n_gen=20, seed=1, secondary='pmax')
     _check(res['recommended'] is not None, "co phuong an kien nghi")
     _check(res['n_evals'] > 0, "co goi danh gia (%d lan)" % res['n_evals'])
-    return res
 
 
 def test_pareto_non_dominated(res):
@@ -106,7 +119,8 @@ def test_reproducible():
 
 
 if __name__ == "__main__":
-    res = test_runs_and_recommends()
+    res = _make_res()
+    test_runs_and_recommends(res)
     test_pareto_non_dominated(res)
     test_feasible_respect_constraints(res)
     test_decode_repairs_typeB()

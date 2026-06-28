@@ -7,7 +7,11 @@
 
 #define AppName "OptApp - Toi uu bo tri coc mong cau"
 #define AppNameVi "OptApp - Tối ưu bố trí cọc móng cầu"
-#define AppVersion "1.2.0"
+; AppVersion lấy từ core/version.py (nguồn duy nhất) qua build_installer.bat (/DAppVersion=...).
+; Giá trị dưới đây chỉ là mặc định dự phòng khi biên dịch .iss trực tiếp không truyền /D.
+#ifndef AppVersion
+#define AppVersion "1.3.0"
+#endif
 #define AppPublisher "TEDI - Tong Cong ty Tu van Thiet ke GTVT"
 #define AppExe "OptApp.exe"
 

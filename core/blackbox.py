@@ -36,7 +36,7 @@ class MCOCBlackbox:
             res = evaluator(coords)
             return res, "Ket qua MCOC thuc (" + os.path.basename(res.get('result_path', '')) + ")"
         except Exception as e:
-            return None, "Loi goi MCOC: %s" % e
+            return None, "Loi goi MCOC (%s): %s" % (type(e).__name__, e)
 
     # ========================================================================
     # ĐÁNH GIÁ MCOC THỰC (ghi input - chạy chương trình - đọc kết quả)

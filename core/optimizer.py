@@ -1,4 +1,14 @@
-"""
+"""optimizer.py — Grid Search (QUÉT LƯỚI) — BASELINE LỊCH SỬ, CHỈ DÙNG CHO TEST/DEMO.
+
+⚠️ KHÔNG dùng trong ứng dụng thật. Đường tối ưu sản phẩm là
+   core/nsga2_optimizer.run_nsga2 (xem ui/main_window.py). Module này được giữ
+   lại làm phương án ĐỐI CHỨNG cho:
+       - tests/test_model_ext.py, tests/sweep_constraints.py,
+         tests/validate_mcoc.py, tests/validate_method.py
+       - run_demo.py
+   Đừng xóa khi các test/demo trên còn phụ thuộc; nếu muốn gỡ, hãy chuyển các
+   phụ thuộc đó sang run_nsga2 trước.
+
 optimizer.py - Quét lưới (Grid Search) tìm cấu hình cọc tối ưu.
 
 Mục đích: với mỗi kiểu bố trí (Kiểu A trục giao / Kiểu B so le), quét toàn bộ

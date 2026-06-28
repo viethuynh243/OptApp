@@ -7,7 +7,7 @@
 
 ## 1. Mục tiêu
 
-Tìm cấu hình cọc có **số lượng ít nhất** nhưng vẫn thỏa **tuyệt đối** các tiêu chuẩn chịu lực và thi công, trên một kích thước bệ cho trước. Vì bài toán có nhiều tiêu chí mâu thuẫn nên lời giải là **mặt Pareto** các phương án đánh đổi, từ đó kiến nghị một phương án.
+Tìm cấu hình cọc có **số lượng ít nhất** mà vẫn thỏa **tuyệt đối** các tiêu chuẩn chịu lực và thi công, trên kích thước bệ cho trước. Vì bài toán nhiều tiêu chí mâu thuẫn, lời giải là **mặt Pareto** các phương án đánh đổi, từ đó kiến nghị một phương án.
 
 ## 2. Mô hình hóa (biến – mục tiêu – ràng buộc)
 
@@ -32,7 +32,7 @@ Giải thuật di truyền đa mục tiêu (Deb et al., 2002), gồm 4 thành ph
 
 ## 4. Đánh giá nội lực — MCOC chính xác (mặc định)
 
-Mỗi phương án được chấm bằng **hộp đen MCOC** (`MCOCBlackbox.make_real_evaluator` → `mcoc_writer` sinh file input → `mcoc_runner` chạy `MCOC_Batch.exe` → đọc `*_result.txt`). Đây là kết quả **exact** (kể cả nền đàn hồi, lực ngang).
+Mỗi phương án được chấm bằng **hộp đen MCOC** (`MCOCBlackbox.make_real_evaluator` → `mcoc_writer` sinh file input → `mcoc_runner` chạy `MCOC_Batch.exe` → đọc `*_result.txt`). Kết quả **exact** (kể cả nền đàn hồi, lực ngang).
 
 - **Bắt buộc** cấu hình MCOC Batch + file input gốc; thiếu thì chương trình **từ chối chạy** (không có đường xấp xỉ trong quyết định).
 - **Tải trọng lấy từ giao diện là nguồn duy nhất:** khối tổ hợp tải trong file gốc bị **ghi đè** bằng tải nhập trên UI.
@@ -43,7 +43,7 @@ Mỗi phương án được chấm bằng **hộp đen MCOC** (`MCOCBlackbox.mak
 
 ## 5. Đề xuất phương án
 
-Trong số phương án **ĐẠT** trên mặt Pareto: ưu tiên (1) **ít cọc nhất** → (2) **mục tiêu phụ** (bệ gọn / Pmax nhỏ) → (3) nếu ngang nhau thì **giữ phương án gốc**. Chương trình so sánh **Kiểu A vs Kiểu B** và kiến nghị phương án tối ưu kèm lý do, bảng tọa độ, báo cáo kỹ thuật và biểu đồ tổ hợp bất lợi nhất.
+Trong số phương án **ĐẠT** trên mặt Pareto: ưu tiên (1) **ít cọc nhất** → (2) **mục tiêu phụ** (bệ gọn / Pmax nhỏ) → (3) nếu ngang nhau thì **giữ phương án gốc**. Chương trình so sánh **Kiểu A vs Kiểu B**, kiến nghị phương án tối ưu kèm lý do, bảng tọa độ, báo cáo kỹ thuật và biểu đồ tổ hợp bất lợi nhất.
 
 ## 6. Ba engine trong code (dùng tùy mục đích)
 

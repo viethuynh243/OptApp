@@ -5,6 +5,11 @@ REM Yeu cau: Python + pyinstaller + Pillow; Inno Setup 6 (ISCC.exe)
 setlocal
 cd /d "%~dp0\.."
 
+REM Lay phien ban tu nguon DUY NHAT core\version.py
+for /f "usebackq delims=" %%v in (`python -c "from core.version import __version__ as v; print(v)"`) do set "APPVER=%%v"
+if not defined APPVER goto :err
+echo [0/3] Phien ban: %APPVER%
+
 echo [1/3] Tao icon...
 python packaging\make_icon.py || goto :err
 
@@ -19,10 +24,10 @@ if not exist "%ISCC%" (
   echo Khong tim thay ISCC.exe. Cai Inno Setup 6: winget install JRSoftware.InnoSetup
   goto :err
 )
-"%ISCC%" packaging\OptApp.iss || goto :err
+"%ISCC%" /DAppVersion=%APPVER% packaging\OptApp.iss || goto :err
 
 echo.
-echo === HOAN TAT: packaging\OptApp_Setup_1.0.0.exe ===
+echo === HOAN TAT: packaging\OptApp_Setup_%APPVER%.exe ===
 goto :eof
 
 :err

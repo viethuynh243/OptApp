@@ -1,0 +1,5 @@
+# OptApp dev/build dependencies. Cài: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8.0
+pyinstaller>=6.21.0       # đóng gói (packaging/OptApp.spec)
+markdown>=3.10.0          # chuyển tài liệu .md -> PDF (packaging/md_to_pdf.py)

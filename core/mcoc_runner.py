@@ -27,6 +27,26 @@ class MCOCError(Exception):
     pass
 
 
+def _no_window_kwargs():
+    """Trả về kwargs cho subprocess để KHÔNG bật cửa sổ cmd/console (Windows).
+
+    Khi app đóng gói dạng GUI (PyInstaller --windowed) gọi tiến trình con là
+    .bat/.exe/.py thì Windows mặc định bật một cửa sổ console. Dùng đồng thời:
+        - CREATE_NO_WINDOW : không cấp console mới cho tiến trình con.
+        - STARTUPINFO + SW_HIDE : ẩn cửa sổ nếu tiến trình vẫn cố hiện.
+    Ngoài Windows trả về dict rỗng (không ảnh hưởng).
+    """
+    if os.name != 'nt':
+        return {}
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+    return {
+        "creationflags": subprocess.CREATE_NO_WINDOW,
+        "startupinfo": startupinfo,
+    }
+
+
 def resolve_shortcut(path):
     """Resolve file .lnk về target thật (Windows). Trả về (target, arguments).
 
@@ -46,7 +66,8 @@ def resolve_shortcut(path):
     )
     out = subprocess.run(
         ["powershell", "-NoProfile", "-Command", ps],
-        capture_output=True, text=True, timeout=30
+        capture_output=True, text=True, timeout=30,
+        **_no_window_kwargs()
     )
     # Lọc các dòng không rỗng: dòng đầu là target, dòng sau (nếu có) là arguments
     lines = [l.strip() for l in out.stdout.splitlines() if l.strip()]
@@ -137,18 +158,29 @@ class MCOCRunner:
                 text=True,
                 cwd=workdir,
                 timeout=self.timeout,
+                **_no_window_kwargs()
             )
         except subprocess.TimeoutExpired:
             raise MCOCError("MCOC chay qua %ds, da dung." % self.timeout)
         except OSError as e:
             raise MCOCError("Khong chay duoc MCOC (%s): %s" % (self.exe, e))
 
+        # MCOC báo lỗi (exit code != 0): coi như thất bại, KHÔNG đọc file cũ/dở.
+        if proc.returncode != 0:
+            tail = (proc.stdout or "")[-400:] + (proc.stderr or "")[-400:]
+            raise MCOCError(
+                "MCOC ket thuc voi ma loi %d cho %s.\nOutput cuoi:\n%s"
+                % (proc.returncode, base, tail))
+
         # Tìm file kết quả: ưu tiên <base>_result.txt, nếu không có thì tìm
         # file *_result.txt mới nhất sinh ra sau t0 trong workdir.
         if not os.path.exists(result_path):
             cands = []
             for fn in os.listdir(workdir):
-                if fn.lower().endswith("_result.txt"):
+                fl = fn.lower()
+                # CHỈ nhận file kết quả CỦA CHÍNH input này (tránh nhặt nhầm
+                # kết quả của input khác vừa sinh <1s trước trong cùng thư mục).
+                if fl.endswith("_result.txt") and fl.startswith(base.lower()):
                     fp = os.path.join(workdir, fn)
                     # Chỉ nhận file mới sinh sau khi bắt đầu chạy (trừ 1s sai số)
                     if os.path.getmtime(fp) >= t0 - 1:

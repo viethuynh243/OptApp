@@ -178,6 +178,33 @@ def min_spacing(coords):
     return float(np.sqrt(d2.min()))
 
 
+def spacing_values(layout_type, nx, ny, sx, sy, coords=None):
+    """NGUỒN DUY NHẤT quy tắc khoảng cách R3 (3d ≤ s ≤ 6d) theo CẤU TRÚC lưới.
+
+    Mọi nơi kiểm R3 (mechanics, nsga2, báo cáo, audit UI) phải gọi hàm này để
+    không bị sai lệch (vd lỗi bỏ sót ĐƯỜNG CHÉO của bố trí hoa mai trước đây).
+
+    Trả về list (nhãn, giá_trị_m, kiểm_cận_trên):
+        - Kiểu A (trực giao): ('sx', sx) nếu nx>1; ('sy', sy) nếu ny>1 — kiểm cả 2 cận.
+        - Kiểu B (hoa mai): hàng kề lệch sx/2 nên cặp gần nhất là ĐƯỜNG CHÉO
+          √((sx/2)²+sy²); trả ('sx', sx) (nx>1) + ('chéo', diag) (ny>1) — cả 2 cận.
+        - Khác / tọa độ thô (vd phương án gốc): ('k/c min', min_spacing) — chỉ xác
+          định được cận DƯỚI nên kiểm_cận_trên=False.
+    """
+    nx = int(nx or 0); ny = int(ny or 0)
+    sx = float(sx or 0.0); sy = float(sy or 0.0)
+    out = []
+    if layout_type == 'A' and (sx > 0 or sy > 0):
+        if nx > 1: out.append(('sx', sx, True))
+        if ny > 1: out.append(('sy', sy, True))
+    elif layout_type == 'B' and (sx > 0 or sy > 0):
+        if nx > 1: out.append(('sx', sx, True))
+        if ny > 1: out.append(('chéo', float(np.hypot(sx / 2.0, sy)), True))
+    elif coords is not None and len(np.asarray(coords)) > 1:
+        out.append(('k/c min', min_spacing(np.asarray(coords, float)), False))
+    return out
+
+
 def calibration_factor(rigid_pmax, actual_pmax):
     """Hệ số hiệu chỉnh K = Pmax_thực / Pmax_bệ_cứng.
 

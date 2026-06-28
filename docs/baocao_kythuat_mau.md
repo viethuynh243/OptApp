@@ -1,7 +1,7 @@
 # BAN TINH KIEM TRA & TOI UU BO TRI MONG COC
 ## Cong trinh: Cau Demo - Mo T1
 
-Tieu chuan: TCVN 10304:2014 (mong coc); TCVN 11823 (cau, LRFD). Noi luc tinh bang MCOC (chinh xac). Don vi: Tan (T), T.m.
+OptApp v1.1.0. Tieu chuan: TCVN 10304:2014 (mong coc); TCVN 11823 (cau, LRFD). Noi luc tinh bang MCOC (chinh xac). Don vi: Tan (T), T.m.
 
 ## 1. SO LIEU DAU VAO
 
