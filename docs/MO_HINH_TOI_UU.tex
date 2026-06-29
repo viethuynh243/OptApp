@@ -6,22 +6,22 @@
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage[margin=2.3cm]{geometry}
-\usepackage{enumitem}
 
 % ---- Ký hiệu chuẩn hóa ---------------------------------------------------
 \newcommand{\Real}{\mathbb{R}}
 \newcommand{\Integer}{\mathbb{Z}}
 \newcommand{\Anl}{\boldsymbol{\mathcal{A}}}     % phân tích nội lực (MCOC)
-\newcommand{\Set}{\boldsymbol{\mathcal{S}}}     % phân tích lún
+\newcommand{\Stl}{\boldsymbol{\mathcal{S}}}     % phân tích lún
 \newcommand{\Gen}{\mathbf{G}}                   % sinh lưới
 \newcommand{\Dset}{\mathcal{D}}
 \newcommand{\Lset}{\mathcal{L}}
+\newcommand{\Iset}{\mathcal{I}}
 \newcommand{\Feas}{\Omega}
 \newcommand{\pos}[1]{\left[#1\right]^{+}}
 \newcommand{\norm}[1]{\lVert #1 \rVert}
 
-\title{\textbf{Mô hình tối ưu thiết kế móng cọc trụ cầu}\\[3pt]
-\large Quy hoạch hợp nhất theo TCVN 11823:2017 (LRFD)}
+\title{\textbf{Bài toán tối ưu thiết kế móng cọc trụ cầu}\\[3pt]
+\large Phát biểu quy hoạch toán học (MINLP) theo TCVN 11823:2017 (LRFD)}
 \author{OptApp --- Mô tả toán học}
 \date{}
 
@@ -29,155 +29,115 @@
 \maketitle
 
 \begin{abstract}\noindent
-Mô hình \emph{hợp nhất}: mọi kiểm toán là một thể hiện của bất đẳng thức LRFD
-$\sum\eta\gamma Q \le \phi R_n$ (TCVN 11823:2017 --- bản Việt hóa của AASHTO LRFD).
-Không có ràng buộc ``bật/tắt'': tất cả trạng thái giới hạn (Cường độ, Sử dụng, Đặc
-biệt) luôn áp dụng. Trị số $\phi,\gamma$ và phương pháp lấy theo TCVN 11823 phần 3
-(tải), phần 5 (bê tông), phần 10 (nền móng); các trị số trong tài liệu là giá trị
-AASHTO LRFD mà TCVN 11823 áp dụng (cần đối chiếu bản chuẩn khi xuất hồ sơ).
+Bài toán được phát biểu theo quy ước tối ưu / vận trù học (OR): khối \emph{Tập hợp ---
+Tham số --- Biến --- Hàm mục tiêu --- Ràng buộc --- Miền biến}, dạng một chương trình
+quy hoạch phi tuyến hỗn hợp nguyên. Mọi ràng buộc là một thể hiện của bất đẳng thức
+LRFD $\eta\,Q \le \phi\,R_n$ (TCVN 11823:2017 --- bản Việt hóa AASHTO LRFD); mọi trạng
+thái giới hạn luôn áp dụng. Trị số $\phi,\gamma$ lấy theo AASHTO LRFD mà TCVN 11823 áp
+dụng (đối chiếu bản chuẩn khi phát hành hồ sơ).
 \end{abstract}
 
 % =========================================================================
-\section{Nguyên lý hợp nhất (LRFD)}
+\section{Tập hợp \& chỉ số}
+\begin{tabular}{@{}ll@{}}
+\toprule
+$\Iset=\{1,\dots,n\}$ & cọc, chỉ số $i$ \ ($n$ cũng là biến) \\
+$\Lset=\{\text{Str-I},\text{Ser-I},\text{Ext-I}\}$ & tổ hợp tải (trạng thái giới hạn), chỉ số $\ell$ \\
+$\mathcal{G}=\{1,\dots,G\}$ & lớp đất, chỉ số $g$ \\
+$\Dset=\{D_1,\dots,D_m\}$ & tập đường kính cọc khả dụng \\
+\bottomrule
+\end{tabular}
+
 % =========================================================================
-Mọi cấu kiện, mọi trạng thái giới hạn thỏa cùng một dạng (TCVN 11823-1/-3):
-\begin{equation}
-\sum_i \eta_i\,\gamma_i\,Q_i \ \le\ \phi\,R_n \;=\; R_r,
-\label{eq:lrfd}
-\end{equation}
-với $\eta=\eta_D\eta_R\eta_I\ge0.95$ (hệ số dẻo--dư thừa--tầm quan trọng), $\gamma_i$
-hệ số tải, $Q_i$ hiệu ứng tải, $\phi$ hệ số sức kháng, $R_n$ sức kháng danh định.
-
-\paragraph{Tổ hợp tải (TCVN 11823-3, Bảng 3.4.1-1).}
-\begin{center}
-\begin{tabular}{@{}lcccl@{}}
+\section{Tham số (dữ liệu cho trước)}
+\begin{tabular}{@{}ll@{}}
 \toprule
-Trạng thái giới hạn & $\gamma_{DC}$ & $\gamma_{DW}$ & $\gamma_{LL}$ & Ghi chú \\
-\midrule
-Cường độ I (Strength I) & $1.25/0.90$ & $1.50/0.65$ & $1.75$ & cơ bản có hoạt tải \\
-Sử dụng I (Service I)   & $1.00$ & $1.00$ & $1.00$ & lún, chuyển vị \\
-Đặc biệt I (Extreme I)  & $1.25/0.90$ & $1.50/0.65$ & $\gamma_{EQ}{=}0.50$ & động đất ($+1.0\,EQ$) \\
+$Q^\ell=(N,H_x,H_y,M_x,M_y,M_z)^\ell$ & hiệu ứng tải ĐÃ nhân hệ số của tổ hợp $\ell$ (Bảng 3.4.1-1) \\
+$\eta=\eta_D\eta_R\eta_I\ge0.95$ & hệ số điều chỉnh tải \\
+$\phi_c,\phi_{up},\phi_\ell,\phi_f,\phi_v,\phi_{stm}$ & hệ số sức kháng (11823-10/-5) \\
+$f'_c,\,f_y$ & cường độ bê tông, thép \\
+$\Sigma_{\text{soil}}=\{(h_g,E_g,\varphi_g,c_g,\gamma_g)\}$ & hồ sơ địa chất \\
+$S_{tol},\,\delta_{tol}$ & dung sai lún, chuyển vị ngang (11823-10) \\
+$e_{\min}=225$ mm & khoảng hở cọc--mép đài (11823-10) \\
+$c_{bt},c_s,c_{tc}$ & đơn giá bê tông, thép, thi công mỗi cọc \\
+$R_n^{(\cdot)}(\cdot)$ & hàm sức kháng danh định (địa kỹ thuật / kết cấu) \\
 \bottomrule
 \end{tabular}
-\end{center}
-$\Lset=\{$Strength I, Service I, Extreme I$\}$ là tập tổ hợp tải đã nhân hệ số.
 
-\paragraph{Hệ số sức kháng (TCVN 11823-10 nền móng; -5 bê tông).}
-\begin{center}
-\begin{tabular}{@{}llc@{}}
-\toprule
-Đại lượng & Hệ số & Trị số \\
-\midrule
-Cọc nén dọc trục (địa kỹ thuật) & $\phi_c$ & $0.45\text{--}0.80$ (theo cách kiểm chứng thi công) \\
-Cọc chịu nhổ (kéo) & $\phi_{up}$ & $0.35\text{--}0.45$ \\
-Cọc chịu ngang (địa kỹ thuật) & $\phi_\ell$ & $1.00$ \\
-Đài: uốn / kéo & $\phi_f$ & $0.90$ \\
-Đài: cắt (một \& hai phương) & $\phi_v$ & $0.90$ \\
-Giàn ảo: thanh chống/nút \,/\, thanh kéo & $\phi_{stm}$ & $0.70\,/\,0.90$ \\
-Trạng thái Đặc biệt (địa kỹ thuật) & $\phi$ & $1.00$ \\
-\bottomrule
-\end{tabular}
-\end{center}
+\paragraph{Hệ số tải (Bảng 3.4.1-1)} Str-I: $\gamma_{DC}{=}1.25/0.90,\ \gamma_{DW}{=}1.50/0.65,\ \gamma_{LL}{=}1.75$;
+Ser-I: $1.0/1.0/1.0$; Ext-I: $\gamma_{EQ(LL)}{=}0.50,\ EQ{=}1.0$.
+
+\paragraph{Hệ số sức kháng} $\phi_c{=}0.45\text{--}0.80$ (theo cách kiểm chứng thi công),
+$\phi_{up}{=}0.35\text{--}0.45$, $\phi_\ell{=}1.0$, $\phi_f{=}0.90$, $\phi_v{=}0.90$,
+$\phi_{stm}{=}0.70/0.90$ (chống-nút/kéo); Ext (địa kỹ thuật) $\phi{=}1.0$.
 
 % =========================================================================
 \section{Biến quyết định}
-% =========================================================================
-\begin{equation}
-\mathbf{x}=\big(\,\underbrace{\{\mathbf{p}_i\}}_{\text{bố trí}},\ D,\ L_c,\ (B_x,B_y,h),\ \mathbf{A}_s\,\big),
-\end{equation}
-bố trí cọc tham số hóa bằng lưới đối xứng $(t,n_x,n_y,s_x,s_y)$, $t\in\{\mathrm A,\mathrm B\}$;
-$D\in\Dset$ đường kính; $L_c$ chiều dài hạ cọc; $(B_x,B_y,h)$ đài; $\mathbf{A}_s$ cốt thép đài.
-Lưới đối xứng là \emph{cấu tạo bắt buộc} của đài cọc cầu (phân bố lực đều, thi công được).
+\begin{tabular}{@{}lll@{}}
+\toprule
+$t$ & $\in\{\mathrm A,\mathrm B\}$ & kiểu lưới (phân loại) \\
+$n_x,n_y$ & $\in\Integer_+$ & số cột, số hàng \\
+$s_x,s_y$ & $\in\Real_+$ & bước lưới \\
+$D$ & $\in\Dset$ & đường kính cọc \\
+$L_c$ & $\in\Real_+$ & chiều dài hạ cọc \\
+$B_x,B_y,h$ & $\in\Real_+$ & kích thước + chiều cao đài \\
+$A_s$ & $\in\Real_+$ & diện tích cốt thép đài \\
+\bottomrule
+\end{tabular}
+
+\paragraph{Biến trạng thái (xác định từ biến quyết định)}
+$\{\mathbf{p}_i\}=\Gen(t,n_x,n_y,s_x,s_y)$, $n=|\{\mathbf{p}_i\}|$;\quad
+$\{P_i,H_i,M_i\}^\ell=\Anl(\{\mathbf{p}_i\},D,L_c,\Sigma_{\text{soil}};Q^\ell)$;\quad
+$S^\ell=\Stl(\cdot)$, $\delta^\ell$ ($p$--$y$);\quad $T_i^\ell=\max(0,-P_i^\ell)$.
 
 % =========================================================================
-\section{Phương trình trạng thái (vật lý)}
-% =========================================================================
-Với mỗi tổ hợp $\ell\in\Lset$:
-\begin{equation}
-\{P_i^\ell,H_i^\ell,M_i^\ell\}=\Anl(\mathbf{x},\Sigma_{\text{soil}};\ell),\qquad
-S^\ell=\Set(\mathbf{x},\Sigma_{\text{soil}};\ell),\qquad
-\delta^\ell=\text{(phân tích }p\text{--}y).
-\end{equation}
-$\Anl$ (nội lực cọc) hiện thực bằng \textbf{MCOC} (chính xác). Hiệu ứng nhóm
-($p$-multiplier, TCVN 11823-10) luôn nằm trong $\Anl$/$R_n$.
+\section{Mô hình (P)}
+
+\begin{equation*}
+\textbf{(P)}\quad
+\min_{t,n_x,n_y,s_x,s_y,D,L_c,B_x,B_y,h,A_s}\
+Z = n\frac{\pi D^2}{4}L_c\,c_{bt} + n\,c_{tc} + B_xB_yh\,c_{bt} + W_s(A_s)\,c_s
+\end{equation*}
+
+\noindent\textbf{s.t.}
+\begin{alignat}{2}
+& \eta\,P_i^\ell \le \phi_c R_n^{\text{comp}}     && \quad \forall i\in\Iset,\ \forall\ell\in\{\text{Str,Ext}\} \tag{1}\\
+& \eta\,T_i^\ell \le \phi_{up} R_n^{\text{upl}}    && \quad \forall i,\ \forall\ell\in\{\text{Str,Ext}\} \tag{2}\\
+& \eta\,H_i^\ell \le \phi_\ell R_n^{\text{lat}}    && \quad \forall i,\ \forall\ell\in\{\text{Str,Ext}\} \tag{3}\\
+& g^{PM}\!\big(P_i^\ell,M_i^\ell\big) \le 1         && \quad \forall i,\ \forall\ell\in\{\text{Str,Ext}\} \tag{4}\\
+& \eta\,M_u^\ell \le \phi_f M_n(A_s,h,D)            && \quad \forall\ell\in\{\text{Str}\} \tag{5}\\
+& \eta\,V_u^{1,\ell} \le \phi_v V_n^{\text{1way}}   && \quad \forall\ell\in\{\text{Str}\} \tag{6}\\
+& \eta\,V_u^{2,\ell} \le \phi_v V_n^{\text{2way}}   && \quad \forall\ell\in\{\text{Str}\} \tag{7}\\
+& \eta\,F_u^{stm,\ell} \le \phi_{stm} R_n^{\text{stm}} && \quad \forall\ell\in\{\text{Str}\}\ (\text{đài sâu}) \tag{8}\\
+& S^\ell \le S_{tol}                                && \quad \forall\ell\in\{\text{Ser}\} \tag{9}\\
+& \delta^\ell \le \delta_{tol}                      && \quad \forall\ell\in\{\text{Ser}\} \tag{10}\\
+& \norm{\mathbf{p}_i-\mathbf{p}_j}\ge s_{\min}=\max(2.5D,0.75) && \quad \forall i,j\in\Iset,\ i<j \tag{11}\\
+& \max_i|x_i|+\tfrac{D}{2}+e_{\min}\le\tfrac{B_x}{2};\ (\text{tương tự } y) && \tag{12}\\
+& \{\mathbf{p}_i\}=\Gen(t,n_x,n_y,s_x,s_y) && \tag{13}\\
+& \{P_i,H_i,M_i\}^\ell=\Anl(\cdot;Q^\ell),\ S^\ell=\Stl(\cdot),\ \delta^\ell=p\text{--}y && \quad \forall\ell\in\Lset \tag{14}\\
+& t\in\{\mathrm A,\mathrm B\},\ n_x,n_y\in\Integer_+,\ s_x,s_y\in[s_{\min},6D], && \notag\\
+& \quad D\in\Dset,\ L_c,B_x,B_y,h,A_s\in\Real_+ && \tag{15}
+\end{alignat}
 
 % =========================================================================
-\section{Hàm mục tiêu --- chi phí công trình}
-% =========================================================================
-\begin{equation}
-\min_{\mathbf{x}\in\Feas}\ C(\mathbf{x})
-= \underbrace{n\frac{\pi D^2}{4}L_c\,c_{bt}+n\,c_{tc}}_{\text{cọc}}
-+ \underbrace{(B_xB_yh)\,c_{bt}+W_s(\mathbf{A}_s)\,c_{s}}_{\text{đài}},
-\end{equation}
-$n=|\{\mathbf{p}_i\}|$ là số cọc --- thành phần chi phối chi phí.
+\section{Nhận xét (phân loại \& lời giải)}
+\begin{itemize}
+\item \textbf{(P) là quy hoạch phi tuyến hỗn hợp nguyên (MINLP)}: biến nguyên $(n_x,n_y)$,
+phân loại $t$, rời rạc $D$, liên tục còn lại.
+\item \textbf{Ràng buộc hộp đen}: toán tử phân tích $\Anl$ (MCOC) không có dạng đóng,
+\emph{không khả vi, không lồi}; đa tổ hợp tải.
+\item \textbf{Mọi ràng buộc đồng dạng LRFD} $\eta Q\le\phi R_n$ $\Rightarrow$ chuẩn hóa
+$g_c(\mathbf{x})=\dfrac{\eta Q_c}{\phi_c R_{n,c}}-1\le0$, gộp thành độ đo vi phạm
+$\Theta(\mathbf{x})=\sum_c\pos{g_c(\mathbf{x})}$; \emph{khả thi}$\iff\Theta=0$;
+$\Feas=\{\mathbf{x}:\Theta(\mathbf{x})=0\}$.
+\item \textbf{Lời giải}: không dùng được phương pháp gradient/đối ngẫu $\Rightarrow$
+\emph{metaheuristic quần thể} (NSGA-II) với xử lý ràng buộc bằng \emph{trội có ràng buộc}
+(constrained-domination) trên $\Theta$; oracle chính xác $=$ MCOC. Pseudocode:
+\texttt{docs/THUAT\_TOAN\_PSEUDOCODE.md}; kế hoạch chuyển đổi: \texttt{plans/025-migrate-tcvn11823.md}.
+\end{itemize}
 
-% =========================================================================
-\section{Ràng buộc --- mọi trạng thái giới hạn luôn áp dụng}
-% =========================================================================
-Mỗi ràng buộc viết dạng chuẩn LRFD $\dfrac{\sum\eta\gamma Q}{\phi R_n}-1\le0$.
-
-\paragraph{(A) Cường độ --- cọc} (TCVN 11823-10; $\forall i$, $\forall\ell\in$Strength,Extreme):
-\begin{align}
-\text{(C1) nén:}\quad & P_{u,i}^\ell \le \phi_c R_n, &
-\text{(C2) nhổ:}\quad & T_{u,i}^\ell \le \phi_{up}R_{n,up},\\
-\text{(C3) ngang:}\quad & H_{u,i}^\ell \le \phi_\ell R_\ell, &
-\text{(C4) tiết diện cọc:}\quad & (P,M)_{u,i}^\ell \in \text{bao } \phi M_n\text{--}\phi P_n.
-\end{align}
-
-\paragraph{(B) Cường độ --- đài} (TCVN 11823-5; $\forall\ell\in$Strength):
-\begin{align}
-\text{(C5) uốn:}\quad & M_u \le \phi_f M_n,\quad M_n=A_sf_y\!\big(d_s-\tfrac a2\big),\ a=\tfrac{A_sf_y}{0.85f'_c b},\\
-\text{(C6) cắt 1 phương:}\quad & V_u \le \phi_v V_n,\quad V_n=0.083\,\beta\sqrt{f'_c}\,b_v d_v\ \text{(MPa)},\\
-\text{(C7) cắt 2 phương:}\quad & V_u \le \phi_v V_n,\quad V_n=\Big(0.17+\tfrac{0.33}{\beta_c}\Big)\sqrt{f'_c}\,b_o d_v \le 0.33\sqrt{f'_c}\,b_o d_v,\\
-\text{(C8) giàn ảo (đài sâu):}\quad & \text{chống/nút/kéo} \le \phi_{stm}\,(\,\text{sức kháng}\,).
-\end{align}
-
-\paragraph{(C) Sử dụng} (TCVN 11823-10; $\forall\ell\in$Service I):
-\begin{equation}
-\text{(C9) lún: } S^\ell \le S_{tol};\qquad
-\text{(C10) chuyển vị ngang: } \delta^\ell \le \delta_{tol}.
-\end{equation}
-
-\paragraph{(D) Cấu tạo \& thi công} (TCVN 11823-10, $\forall i\neq j$):
-\begin{align}
-\text{(C11) khoảng cách tim:}\ & \norm{\mathbf{p}_i-\mathbf{p}_j}\ge s_{\min}=\max(2.5D,\,750\,\text{mm}),\\
-\text{(C12) cọc cách mép đài:}\ & \ge \tfrac{D}{2}+225\,\text{mm},\qquad
-\text{(C13) cọc trong đài.}
-\end{align}
-
-% =========================================================================
-\section{Phát biểu hợp nhất (gọn)}
-% =========================================================================
-\begin{equation}
-\boxed{
-\begin{aligned}
-\min_{\mathbf{x}}\ & C(\mathbf{x})=C_{\text{cọc}}+C_{\text{đài}}\\
-\text{s.t.}\ & \{P,H,M\}_i^\ell=\Anl(\mathbf{x},\Sigma;\ell),\ S^\ell=\Set(\cdot),\ \delta^\ell && \forall\ell\in\Lset\\
-& \text{Cường độ: C1--C8} && \forall i,\ \forall\ell\in\{\text{Str,Ext}\}\\
-& \text{Sử dụng: C9--C10} && \forall\ell\in\text{Ser}\\
-& \text{Cấu tạo: C11--C13} && \forall i\neq j\\
-& \text{mọi ràng buộc dạng } \textstyle\sum\eta\gamma Q\le\phi R_n && \text{(TCVN 11823)}\\
-& \mathbf{x}:\ n\in\Integer_+,\ D\in\Dset,\ L_c,B_x,B_y,h\in\Real_+,\ \text{lưới đối xứng}
-\end{aligned}}
-\end{equation}
-
-% =========================================================================
-\section{Tính giải được \& thuật toán}
-% =========================================================================
-Bài toán là MINLP, đa tổ hợp tải, ràng buộc tính qua hộp đen ($\Anl$=MCOC; $\Set$;
-$p$--$y$) --- không khả vi, không lồi. Mọi ràng buộc C1--C13 đã ở dạng vô thứ nguyên
-$\sum\eta\gamma Q/(\phi R_n)-1\le0$ nên gộp được thành \emph{một} độ đo vi phạm:
-\begin{equation}
-\Theta(\mathbf{x})=\sum_{c}\pos{\frac{\sum\eta\gamma Q_c}{\phi_c R_{n,c}}-1}\ \ge0,
-\qquad \text{khả thi}\iff\Theta=0,\qquad \Feas=\{\mathbf{x}:\Theta=0\}.
-\end{equation}
-Giải bằng \textbf{NSGA-II}: trội có ràng buộc (khả thi thắng bất khả thi; ít vi phạm
-thắng; rồi cực tiểu $C$), gieo hạt tất định, cache theo spec lưới, trần ngân sách gọi
-$\Anl$. Pseudocode: \texttt{docs/THUAT\_TOAN\_PSEUDOCODE.md}; kế hoạch chuyển đổi:
-\texttt{plans/025-migrate-tcvn11823.md}.
-
-\paragraph{Nguồn trị số.} $\gamma$ (Bảng 3.4.1-1), $\phi$ cọc (Đ.10.5.5.2.3), $\phi$
-bê tông (Đ.5.5.4.2), $s_{\min}$ \& mép (Đ.10.7.1.2), $p$-multiplier (Đ.10.7.2.4) ---
-theo AASHTO LRFD mà TCVN 11823:2017 áp dụng; đối chiếu bản TCVN khi phát hành hồ sơ.
+\paragraph{Nguồn trị số.} $\gamma$ (Bảng 3.4.1-1), $\phi$ cọc (Đ.10.5.5.2.3), $\phi$ bê
+tông (Đ.5.5.4.2), $s_{\min}$ \& mép (Đ.10.7.1.2), $p$-multiplier (Đ.10.7.2.4) --- theo
+AASHTO LRFD mà TCVN 11823:2017 áp dụng; đối chiếu bản TCVN khi phát hành hồ sơ.
 
 \end{document}
