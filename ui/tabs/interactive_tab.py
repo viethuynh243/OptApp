@@ -159,7 +159,59 @@ class InteractiveTab:
                   foreground="#b03a2e", wraplength=380, justify="left").grid(
             row=4, column=0, columnspan=4, sticky="w", pady=(2, 0))
 
-        # --- Sức chịu tải theo TCVN 10304:2014 (tùy chọn) ---
+        # --- Cơ sở thiết kế TCVN 11823:2017 (LRFD) — móng (11823-10) & bê tông (11823-5) ---
+        # Σγ·Q ≤ φ·Rn. Nhập R_N (sức kháng danh nghĩa) + loại cọc + phương pháp → φ·Rn = [Po].
+        frame_lrfd = tk.LabelFrame(
+            col1, text="Cơ sở thiết kế: TCVN 11823:2017 (LRFD — cầu)", padx=10, pady=5)
+        frame_lrfd.pack(fill=tk.X, pady=5)
+        rb_row = tk.Frame(frame_lrfd)
+        rb_row.pack(fill=tk.X)
+        ttk.Radiobutton(rb_row, text="TCVN 11823 (LRFD)", value='TCVN11823',
+                        variable=self.app.var_design_basis).pack(side=tk.LEFT)
+        ttk.Radiobutton(rb_row, text="TCVN 10304 (đối chiếu)", value='TCVN10304',
+                        variable=self.app.var_design_basis).pack(side=tk.LEFT, padx=(8, 0))
+        body = tk.Frame(frame_lrfd)
+        body.pack(fill=tk.X, pady=(4, 0))
+        chk_lrfd = ttk.Checkbutton(body, text="Nhân hệ số tải γ (tổ hợp)",
+                                   variable=self.app.var_lrfd_enable)
+        chk_lrfd.grid(row=0, column=0, columnspan=2, sticky="w")
+        Tooltip(chk_lrfd, "Bật để nhân hệ số tải γ theo trạng thái giới hạn (TCVN 11823-3). "
+                          "Tắt → tải danh nghĩa (γ=1), CHƯA phải kiểm LRFD đầy đủ.")
+        ttk.Label(body, text="Trạng thái").grid(row=0, column=2, sticky="e", padx=(8, 4))
+        ttk.Combobox(body, textvariable=self.app.var_strength_state, width=12, state="readonly",
+                     values=['STRENGTH_I', 'STRENGTH_II', 'STRENGTH_III', 'STRENGTH_IV', 'STRENGTH_V']
+                     ).grid(row=0, column=3, sticky="ew")
+        lrfd_fields = [
+            ("R_N — kháng nén DN (T)", self.app.var_rn,
+             "Sức kháng NÉN danh nghĩa Rn của 1 cọc (T). φ·Rn = [Po]. Trống → giữ [Po] nhập tay."),
+            ("R_N,t — kháng kéo DN (T)", self.app.var_rnt,
+             "Sức kháng KÉO/nhổ danh nghĩa (T). Trống → giữ [Ct] nhập tay."),
+            ("f'c bê tông (MPa)", self.app.var_fc,
+             "Cường độ nén mẫu trụ f'c (MPa) cho thiết kế đài TCVN 11823-5. Trống → suy từ cấp B (gần đúng)."),
+        ]
+        for i, (text, var, tip) in enumerate(lrfd_fields):
+            r, c = divmod(i, 2)
+            lbl = ttk.Label(body, text=text)
+            lbl.grid(row=1 + r, column=c * 2, sticky="w", padx=(2, 4), pady=2)
+            Tooltip(lbl, tip)
+            ttk.Entry(body, textvariable=var, width=9).grid(
+                row=1 + r, column=c * 2 + 1, sticky="ew", padx=(0, 8), pady=2)
+        ttk.Label(body, text="Loại cọc").grid(row=3, column=0, sticky="w", padx=(2, 4), pady=2)
+        ttk.Combobox(body, textvariable=self.app.var_pile_type, width=9, state="readonly",
+                     values=['driven', 'drilled']).grid(row=3, column=1, sticky="ew", padx=(0, 8), pady=2)
+        ttk.Label(body, text="PP xác định Rn").grid(row=3, column=2, sticky="w", padx=(2, 4), pady=2)
+        ttk.Combobox(body, textvariable=self.app.var_resist_method, width=14, state="readonly",
+                     values=['static_load_test', 'dynamic_test', 'wave_equation', 'static_analysis', 'cpt']
+                     ).grid(row=3, column=3, sticky="ew", padx=(0, 2), pady=2)
+        ttk.Checkbutton(body, text="Móng 1 cọc (φ×0,8)", variable=self.app.var_single_pile
+                        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        ttk.Label(frame_lrfd, font=("Arial", 7), foreground="#b06000",
+                  text="⚠ Hệ số γ/φ là trị tham khảo AASHTO — cần kỹ sư nghiệm thu TCVN 11823-3/-5/-10."
+                  ).pack(anchor="w", pady=(3, 0))
+        body.columnconfigure(1, weight=1, minsize=60)
+        body.columnconfigure(3, weight=1, minsize=60)
+
+        # --- Sức chịu tải theo TCVN 10304:2014 (tùy chọn — chỉ dùng khi chọn cơ sở 10304) ---
         # Cho phép kỹ sư nhập Rc,k + hệ số tin cậy để chương trình TỰ TÍNH [Po]/[Ct]
         # theo Điều 7.1.11 (Rc,d = γ0/γn · Rc,k/γk). Khi bật, giá trị tính được sẽ
         # GHI ĐÈ [Po]/[Ct] (xem get_params_dict + core/tcvn.apply_design_capacities).
@@ -254,7 +306,7 @@ class InteractiveTab:
         rbase = (len(ssi_fields) + 1) // 2
         ttk.Label(frame_ssi, text="Mác bê tông đài").grid(row=rbase, column=0, sticky="w", padx=(2, 4), pady=2)
         ttk.Combobox(frame_ssi, textvariable=self.app.var_conc_grade, width=7, state="readonly",
-                     values=['B15', 'B20', 'B25', 'B30', 'B35', 'B40']).grid(
+                     values=['B20', 'B25', 'B30', 'B40', 'C28', 'C30', 'C35', 'C40', 'C45', 'C50']).grid(
             row=rbase, column=1, sticky="ew", padx=(0, 8), pady=2)
         ttk.Label(frame_ssi, text="Nhóm cốt thép").grid(row=rbase, column=2, sticky="w", padx=(2, 4), pady=2)
         ttk.Combobox(frame_ssi, textvariable=self.app.var_steel_grade, width=7, state="readonly",

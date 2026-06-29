@@ -195,10 +195,32 @@ class ParamsController:
                     d['IMPORTANCE_LEVEL'] = self.app.var_imp_level.get()
         except (ValueError, AttributeError):
             pass
-        # Chuẩn hóa [Po]/[Ct] -> Rc,d/Rt,d theo TCVN 10304:2014 Điều 7.1.11 nếu
-        # người dùng đã khai báo Rc,k + hệ số tin cậy (qua file/CSV/GUI). Idempotent.
+        # Cơ sở thiết kế TCVN 11823:2017 (LRFD) — đọc panel GUI vào params (null-safe).
+        # R_N → φ·Rn = [Po] (11823-10); FC/loại cọc/PP cho thiết kế đài 11823-5.
+        try:
+            d['DESIGN_BASIS'] = self.app.var_design_basis.get() or 'TCVN11823'
+            if bool(self.app.var_lrfd_enable.get()):
+                d['LRFD_ENABLE'] = True
+            d['PILE_TYPE'] = self.app.var_pile_type.get() or 'driven'
+            d['RESISTANCE_METHOD'] = self.app.var_resist_method.get() or 'static_analysis'
+            d['STRENGTH_STATE'] = self.app.var_strength_state.get() or 'STRENGTH_I'
+            if bool(self.app.var_single_pile.get()):
+                d['SINGLE_PILE'] = True
+            rn = _fnum(self.app.var_rn)
+            if rn:
+                d['R_N'] = rn
+            rnt = _fnum(self.app.var_rnt)
+            if rnt:
+                d['R_N_T'] = rnt
+            fc = _fnum(self.app.var_fc)
+            if fc:
+                d['FC'] = fc
+        except (AttributeError, ValueError):
+            pass
+        # Chuẩn hóa [Po]/[Ct] theo CƠ SỞ THIẾT KẾ: TCVN 11823 (φ·Rn) hoặc 10304 (Rc,d
+        # từ Rc,k + hệ số). Idempotent. Xem core/lrfd.apply_design_basis.
         from core import lrfd
-        lrfd.apply_design_basis(d, None)   # đặt P_LIMIT theo cơ sở thiết kế (LRFD φRn / Rc,d)
+        lrfd.apply_design_basis(d, None)
         return d
 
 

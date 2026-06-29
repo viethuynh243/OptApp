@@ -108,6 +108,19 @@ class MainWindow:
         self.var_gk_t = tk.StringVar(value='')             # γk,t — theo đất khi kéo (tùy chọn)
         self.var_imp_level = tk.StringVar(value='II')      # cấp công trình I/II/III → γn
 
+        # --- Cơ sở thiết kế TCVN 11823:2017 (LRFD) — mặc định dự án (ADR-008) ---
+        # Σγ·Q ≤ φ·Rn. R_N = sức kháng danh nghĩa; φ theo loại cọc + phương pháp (11823-10);
+        # bê tông đài theo 11823-5. Trị γ/φ là tham khảo AASHTO — cần kỹ sư nghiệm thu.
+        self.var_design_basis = tk.StringVar(value='TCVN11823')   # 'TCVN11823' | 'TCVN10304'
+        self.var_lrfd_enable = tk.BooleanVar(value=False)         # nhân hệ số tải γ (demand)
+        self.var_rn = tk.StringVar(value='')                      # R_N — kháng nén danh nghĩa (T)
+        self.var_rnt = tk.StringVar(value='')                     # R_N_T — kháng kéo danh nghĩa (T)
+        self.var_pile_type = tk.StringVar(value='driven')         # driven | drilled
+        self.var_resist_method = tk.StringVar(value='static_analysis')
+        self.var_single_pile = tk.BooleanVar(value=False)         # móng 1 cọc → φ×0,8
+        self.var_strength_state = tk.StringVar(value='STRENGTH_I')
+        self.var_fc = tk.StringVar(value='')                      # f'c bê tông (MPa) — ưu tiên hơn cấp B
+
         # --- Thông số NỀN & ĐÀI cọc (cho phân tích SSI và thiết kế kết cấu đài) ---
         self.var_pile_length = tk.StringVar(value='')        # Lc — chiều dài cọc (m)
         self.var_ks_soil = tk.StringVar(value='2000')        # ks — mô đun nền ngang (T/m³), DỰ PHÒNG
