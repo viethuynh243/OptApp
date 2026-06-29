@@ -1,0 +1,20 @@
+# Chuẩn hóa kết thúc dòng: git tự xử lý text (lưu LF trong repo), đánh dấu binary
+# rõ ràng để không bao giờ bị chuyển đổi EOL. Giúp diff sạch khi bàn giao đa máy.
+* text=auto
+
+# Mã nguồn & tài liệu: text
+*.py   text
+*.md   text
+*.txt  text
+*.iss  text
+*.spec text
+*.bat  text
+*.ini  text
+*.json text
+
+# Binary — không đụng EOL
+*.png  binary
+*.ico  binary
+*.pdf  binary
+*.xlsx binary
+*.mp4  binary

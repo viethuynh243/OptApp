@@ -4,7 +4,14 @@
 
 Ứng dụng tối ưu hóa bố trí cọc móng cầu trên bệ chữ nhật. Mục tiêu: tìm phương án có **số cọc ít nhất** mà vẫn đảm bảo điều kiện chịu lực và thi công.
 
-> **Nguyên tắc chính xác bắt buộc:** Bên thi công **chỉ chấp nhận kết quả tính bằng phần mềm MCOC**, không nhận kết quả xấp xỉ. Vì vậy mọi phương án quyết định/giao nộp đều được chấm trực tiếp bằng **MCOC (exact)**. Tốc độ đến từ việc **giảm số lần gọi MCOC** (cache + ngân sách + dẫn hướng) và **chạy song song**, **không** phải thay MCOC bằng mô hình xấp xỉ. Xem [docs/BAO_CAO_THUAT_TOAN.md §4.0](docs/BAO_CAO_THUAT_TOAN.md).
+> **Nguyên tắc chính xác bắt buộc:** Bên thi công **chỉ chấp nhận kết quả tính bằng phần mềm MCOC**, không nhận kết quả xấp xỉ. Vì vậy mọi phương án quyết định/giao nộp đều được chấm trực tiếp bằng **MCOC (exact)**. Tốc độ đến từ việc **giảm số lần gọi MCOC** (cache + ngân sách + dẫn hướng) và **chạy song song**, **không** phải thay MCOC bằng mô hình xấp xỉ. Xem [docs/reference/BAO_CAO_THUAT_TOAN.md §4.0](docs/reference/BAO_CAO_THUAT_TOAN.md).
+
+## Tài liệu
+
+Bộ tài liệu đầy đủ tổ chức theo SDLC: **[docs/README.md](docs/README.md)** (mục lục OA-DOC).
+Lối tắt: [Hướng dẫn sử dụng](docs/guides/HUONG_DAN_SU_DUNG.md) · [Kiến trúc](docs/reference/ARCHITECTURE.md) · [Quyết định thiết kế (ADR)](docs/reference/adr/) · [Backlog](docs/project/BACKLOG.md).
+
+> ⚠️ **Định hướng (2026-06-29):** chương trình sẽ **chuyển cơ sở thiết kế sang TCVN 11823:2017** (thay TCVN 10304:2014) — chỉnh sửa lớn ở pha tiếp theo. Tài liệu hiện hành mô tả trạng thái code hiện tại (cơ sở TCVN 10304:2014). Xem [ADR-008](docs/reference/adr/ADR-008-co-so-thiet-ke-tcvn-11823.md).
 
 ## Tính năng chính
 
@@ -135,7 +142,7 @@ Kết quả giao nộp luôn từ MCOC. Công thức **bệ cứng** (`core/rigi
 
 ## Phương pháp tối ưu hóa (MCOC chính xác)
 
-Mô tả tóm tắt — chi tiết xem `methodology.md` và `docs/BAO_CAO_THUAT_TOAN.md`:
+Mô tả tóm tắt — chi tiết xem [docs/reference/METHODOLOGY.md](docs/reference/METHODOLOGY.md) và [docs/reference/BAO_CAO_THUAT_TOAN.md](docs/reference/BAO_CAO_THUAT_TOAN.md):
 
 1. Tham số hóa bố trí thành genome `(type, nx, ny, sx, sy)` — lưới đối xứng A/B.
 2. **NSGA-II** tiến hóa quần thể phương án (đa mục tiêu: số cọc + bệ gọn/Pmax).

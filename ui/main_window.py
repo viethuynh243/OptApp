@@ -16,7 +16,7 @@ tham chiếu `self` để thao tác state/widget qua `app.<...>`):
 
 File này KHÔNG chứa logic tính toán: thuật toán ở core/, xuất/nhập ở io_handlers/.
 Các method công khai (test/harness/UI gọi) được giữ làm DELEGATOR mỏng tới
-component tương ứng, nên API ngoài bất biến. Xem plans/023-refactor-ui-composition.md.
+component tương ứng, nên API ngoài bất biến. Xem docs/reference/ARCHITECTURE.md.
 
 Quản lý 2 tab:
     - Tab 1 (Interactive): nhập thông số/tải trọng, chạy tối ưu, vẽ mô phỏng,

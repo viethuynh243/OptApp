@@ -34,3 +34,14 @@ tests/_work/
 # mốc snapshot regression (theo máy dev/numpy)
 tests/_ui_regression_golden.json
 
+# Thiết kế cá nhân & tài liệu/dữ liệu NỘI BỘ — KHÔNG đẩy lên git (giữ local).
+# Nội dung giá trị (ADR, thuật ngữ) đã được di cư vào docs/reference & docs/guides.
+# kế hoạch phát triển cá nhân (thiết kế nội bộ)
+plans/
+# bộ mẫu đầu vào MCOC + kết quả tối ưu (dữ liệu nội bộ)
+mcoc_input_sample/
+# bản trích tiêu chuẩn TCVN (tham khảo nội bộ, bản quyền)
+words_dict/
+# vault Obsidian (tổ chức ghi chú cá nhân)
+docs/vault/
+
