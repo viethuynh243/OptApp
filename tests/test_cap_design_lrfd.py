@@ -103,6 +103,42 @@ def test_design_cap_lrfd_missing():
     assert res['missing']
 
 
+def test_flexure_roundtrip_handcalc():
+    """Cho As → tính Mn chính xác → flexure_As(φ·Mn) phải HOÀN NGUYÊN As (≈)."""
+    fc, fy, b1, b, de = 30.0, 400.0, 0.85, 2000.0, 1400.0
+    As = 10000.0
+    a = As * fy / (0.85 * fc * b)
+    Mn = As * fy * (de - a / 2.0)
+    Mu = cl.PHI_FLEXURE * Mn
+    r = cl.flexure_As(Mu, fc, fy, b1, b, de)
+    assert r['As_req'] == pytest.approx(As, rel=1e-3)
+    assert r['ok'] is True and r['c_over_de'] <= 0.42
+
+
+def test_punching_beta_c_effect():
+    """Cột vuông (βc=1) → cận 0,33·√f'c chi phối; cột rất dẹt (βc lớn) → (0,17+0,33/βc)."""
+    fc, de, H = 30.0, 900.0, 1000.0
+    sq = cl.punching_column(0.0, 1000.0, 1000.0, de, H, fc)      # βc=1
+    flat = cl.punching_column(0.0, 4000.0, 1000.0, de, H, fc)    # βc=4
+    dv = cl._dv(de, H)
+    assert sq['beta_c'] == pytest.approx(1.0)
+    assert sq['Vn'] == pytest.approx(0.33 * math.sqrt(fc) * sq['bo'] * dv)   # cận 0,33 chi phối
+    assert flat['beta_c'] == pytest.approx(4.0)
+    # βc=4 → 0,17+0,33/4 = 0,2525 < 0,33 → dùng số nhỏ hơn
+    assert flat['Vn'] == pytest.approx(0.2525 * math.sqrt(fc) * flat['bo'] * dv)
+
+
+def test_dv_governed_by_072h_when_thin():
+    assert cl._dv(900.0, 1000.0) == pytest.approx(810.0)   # 0,9·de
+    assert cl._dv(400.0, 600.0) == pytest.approx(432.0)    # 0,72·h chi phối
+
+
+def test_more_load_more_steel_lrfd():
+    r1 = cl.design_cap_lrfd(COORDS, PARAMS, [{'N': 600.0}])
+    r2 = cl.design_cap_lrfd(COORDS, PARAMS, [{'N': 1500.0}])
+    assert r2['flexure']['x']['As'] >= r1['flexure']['x']['As']
+
+
 def test_design_cap_dispatches_by_basis():
     from core import cap_design
     # 11823 → uỷ quyền sang LRFD (có 'standard' 11823-5)

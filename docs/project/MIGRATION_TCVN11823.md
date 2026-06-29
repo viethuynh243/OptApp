@@ -1,6 +1,6 @@
 # Kế hoạch chuyển cơ sở thiết kế sang TCVN 11823:2017 (LRFD)
 
-> **Mã:** OA-DOC-14 · **Phiên bản:** 0.3 (Pha 1–4 — LRFD móng + bê tông 11823-5 đã cài; chờ nghiệm thu hệ số) · **Cập nhật:** 2026-06-29 · **Trạng thái:** Draft
+> **Mã:** OA-DOC-14 · **Phiên bản:** 0.4 (Pha 1–4 + form GUI + 43 test LRFD; chờ nghiệm thu hệ số với bản TCVN gốc) · **Cập nhật:** 2026-06-29 · **Trạng thái:** Draft
 > **Căn cứ:** khảo sát `core/`, `io_handlers/`, `ui/` (trạng thái cơ sở TCVN 10304:2014) + tra cứu web TCVN 11823 / AASHTO LRFD. Quyết định gốc: [ADR-008](../reference/adr/ADR-008-co-so-thiet-ke-tcvn-11823.md) · [Backlog M1](BACKLOG.md).
 
 > ⚠️ **Mọi giá trị hệ số `γ`/`φ` trong tài liệu này là TRỊ THAM KHẢO theo AASHTO LRFD**
@@ -173,3 +173,22 @@ header vào `params`.)
 - **f'c quy đổi từ cấp B** trong `cap_design_lrfd` là GẦN ĐÚNG — nên nhập `FC` trực
   tiếp + bổ sung cấp C vào combobox GUI (increment).
 - Cập nhật `docs/reference/AUDIT_CONG_THUC_TCVN.md` sang khung 11823 sau nghiệm thu.
+
+## 10. Nghiệm thu hệ số γ/φ — trạng thái (2026-06-29)
+
+- **Đã làm:** đối chiếu cấu trúc với nhiều nguồn AASHTO/DOT (Caltrans BDP, Minnesota
+  DOT, ADOT, NCHRP 507, PCI Journal, TxDOT) + xác nhận **TCVN 11823-3/-5/-10 dựa trên
+  AASHTO LRFD**. Trị γ/φ trong code là **trị chuẩn AASHTO LRFD** (Bảng 3.4.1-1; §5.5.4.2
+  bê tông φ=0,90 uốn & cắt, 0,75 nén; §10.5.5.2 sức kháng cọc theo phương pháp xác định).
+- **Chưa làm được tự động:** trích NGUYÊN VĂN trị số từ bản TCVN 11823 GỐC — toàn văn nằm
+  sau cổng đăng nhập/paywall (caselaw, studocu, vsqi) hoặc PDF khoá mật khẩu. Vì vậy
+  **đối chiếu số chính xác + sai khác phụ lục quốc gia là việc của KỸ SƯ** với bản chuẩn.
+- **Bảo chứng nội bộ — 43 ca test LRFD** (`test_lrfd.py` 25, `test_cap_design_lrfd.py` 14,
+  `test_gui_lrfd.py` 4) neo công thức & đường đi: φ tra bảng (đầy đủ ma trận), giảm 20%
+  móng 1 cọc, Đặc biệt φ=1,0, factor tải γ (min/uplift/đa loại/bỏ γ=0), **nhân tải tuyến
+  tính → lực cọc đúng γ**, **tiêu chí Σγ·Q ≤ φ·Rn thoả end-to-end qua `run_nsga2`**, uốn
+  round-trip `φMn`, βc chọc thủng, dv, dispatch theo cơ sở, form GUI → params. Toàn bộ
+  pytest xanh (101 ca).
+- **Khi có bản TCVN 11823 (text):** chỉ cần sửa trị trong `LOAD_FACTORS`/`RESISTANCE_FACTORS`
+  ([core/lrfd.py](../../core/lrfd.py)) và `PHI_*`/`FC_BY_GRADE` ([core/cap_design_lrfd.py](../../core/cap_design_lrfd.py))
+  — đã gom MỘT chỗ; test hand-calc sẽ bắt ngay sai lệch.

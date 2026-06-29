@@ -164,3 +164,65 @@ def test_run_nsga2_lrfd_sets_factored_resistance():
     assert p['P_LIMIT'] == pytest.approx(675.0)        # 0.75 * 900
     assert p['_capacity_source'] == 'tcvn_11823_10'
     assert res['recommended'] is not None
+
+
+# ============================================================ EDGE / LOGIC
+def test_resistance_factor_full_matrix():
+    # Cọc khoan nhồi nén thử tải tĩnh > phân tích tĩnh; kéo < nén ở cùng pp.
+    assert cl_rf('drilled', 'compression', 'static_load_test') == 0.70
+    assert cl_rf('drilled', 'compression', 'static_analysis') == 0.50
+    assert cl_rf('drilled', 'uplift', 'static_analysis') == 0.40
+    assert cl_rf('driven', 'uplift', 'static_load_test') == 0.60
+    # loại cọc lạ → rơi về bảng 'driven' cho action đó
+    assert cl_rf('barrette', 'compression', 'static_analysis') == \
+           cl_rf('driven', 'compression', 'static_analysis')
+
+
+def cl_rf(*a, **k):
+    return lrfd.resistance_factor(*a, **k)
+
+
+def test_extreme_and_single_pile_compose():
+    # Đặc biệt (φ=1,0) + móng 1 cọc (×0,8) = 0,80, bất kể loại/pp.
+    assert lrfd.resistance_factor(extreme=True, single_pile=True) == pytest.approx(0.80)
+
+
+def test_factor_loads_multi_type_and_min():
+    loads = [{'N': 100.0, 'load_type': 'DC'}, {'N': 50.0, 'load_type': 'LL'}]
+    out = lrfd.factor_loads(loads, 'STRENGTH_I')
+    by = {o['load_type']: o['N'] for o in out}
+    assert by['DC'] == pytest.approx(125.0) and by['LL'] == pytest.approx(87.5)
+    out_min = lrfd.factor_loads(loads, 'STRENGTH_I', use_min=True)
+    by_min = {o['load_type']: o['N'] for o in out_min}
+    assert by_min['DC'] == pytest.approx(90.0)          # DC γ_min = 0,90 (giảm tải ổn định)
+
+
+def test_demand_loads_scale_pile_force_linearly():
+    """Nhân hệ số tải TRƯỚC đánh giá → lực cọc (bệ cứng, tuyến tính) scale đúng γ.
+    Đây là cơ chế QĐ-2: MCOC/bệ cứng chạy 1 lần trên bộ tải đã nhân hệ số."""
+    from core import rigid_cap
+    coords = [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]]
+    loads = [{'N': 400.0, 'Mx': 50.0, 'My': 50.0, 'load_type': 'LL'}]
+    p = {'DESIGN_BASIS': 'TCVN11823', 'LRFD_ENABLE': True}
+    dem = lrfd.demand_loads(loads, p)
+    pmax_nom = rigid_cap.pmax_pmin(coords, loads)[0]
+    pmax_fac = rigid_cap.pmax_pmin(coords, dem)[0]
+    assert pmax_fac == pytest.approx(1.75 * pmax_nom, rel=1e-9)
+
+
+def test_run_nsga2_lrfd_recommended_satisfies_criterion():
+    """Phương án kiến nghị thoả Σγ·Q ≤ φ·Rn: pmax (đã có hệ số) ≤ P_LIMIT (=φ·Rn)."""
+    from core.nsga2_optimizer import run_nsga2
+    p = {
+        'L_X': 6.0, 'L_Y': 9.6, 'D_PILE': 1.2, 'SAFE_D': 1.2, 'mock_mode': True,
+        'DESIGN_BASIS': 'TCVN11823', 'LRFD_ENABLE': True,
+        'R_N': 1200.0, 'RESISTANCE_METHOD': 'static_load_test',   # φ=0,75 → φRn=900
+        'original_coords': [[-1.5, -3.0], [1.5, -3.0], [-1.5, 0.0],
+                            [1.5, 0.0], [-1.5, 3.0], [1.5, 3.0]],
+        'orig_pmax': 519.63, 'orig_pmin': 0.0, 'orig_mxmax': 7.49, 'orig_mymax': 27.82,
+    }
+    loads = [{'N': 300.0, 'Mx': 80.0, 'My': 80.0, 'load_type': 'LL'}]
+    res = run_nsga2(p, loads, pop_size=24, n_gen=12, seed=3)
+    rec = res['recommended']
+    assert rec is not None
+    assert rec['pmax'] <= p['P_LIMIT'] + 1e-6          # demand có hệ số ≤ φ·Rn
