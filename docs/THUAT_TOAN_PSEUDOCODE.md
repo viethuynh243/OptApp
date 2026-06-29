@@ -1,116 +1,97 @@
-# Thuật toán giải bài toán tối ưu bố trí cọc (pseudocode)
+# Thuật toán giải mô hình tối ưu móng cọc trụ cầu (LRFD / TCVN 11823:2017)
 
-Giải **mô hình rút gọn** (Phần III trong `docs/MO_HINH_TOI_UU.tex`) — tức bài toán
-tổng quát đã thu giảm về họ lưới đối xứng. Ký hiệu nhất quán:
+Giải mô hình hợp nhất trong `docs/MO_HINH_TOI_UU.tex`. Mọi ràng buộc là một thể hiện
+của bất đẳng thức LRFD `Σηγ·Q ≤ φ·R_n` và **luôn áp dụng** (không bật/tắt).
 
-- Ω miền khả thi · Θ vi phạm cứng (chuẩn hóa) · ≺ trội có ràng buộc
-- G toán tử sinh lưới · Ψ oracle MCOC (hiện thực số của toán tử phân tích 𝒜)
-- Mục tiêu **thuần** F = (f1, f2) — KHÔNG có số hạng phạt.
-- Vòng lõi: **Lx, Ly, d CỐ ĐỊNH**. Đường kính & kích thước bệ là 2 tầng NGOÀI.
+Ký hiệu: Ω miền khả thi · Θ vi phạm (gộp tỉ số LRFD) · ≺ trội có ràng buộc ·
+G sinh lưới · 𝒜 phân tích nội lực (MCOC) · 𝒮 phân tích lún · C chi phí.
 
 ```
 ═══════════════════════════════════════════════════════════════════════
- NSGA-II + MCOC  —  giải mô hình rút gọn (R1–R6)
+ NSGA-II + ORACLE LRFD  (TCVN 11823: phần 3 tải, 5 bê tông, 10 nền móng)
 ═══════════════════════════════════════════════════════════════════════
 
-INPUT : D, Lx, Ly, c, [Po],[Ct],[M];  μ, T, ηc=15, ηm=20, max_evals
-        (tùy chọn: [H], cờ R7/R8, cờ ENFORCE_SPACING_MAX — mặc định TẮT)
-OUTPUT: tập Pareto P các phương án x = (t, nx, ny, sx, sy)
+INPUT : tải danh định {DC,DW,LL,EQ,...}; địa chất Σ; vật liệu f'c,fy;
+        hệ số chuẩn φ (10.5.5.2.3, 5.5.4.2), γ (Bảng 3.4.1-1);
+        dung sai S_tol, δ_tol;  μ, T, ηc=15, ηm=20, max_evals
+OUTPUT: phương án x = (lưới đối xứng, D, Lc, đài Bx×By×h, As) chi phí nhỏ nhất
+
+─── DỮ LIỆU TẢI: dựng tổ hợp đã nhân hệ số (TCVN 11823-3) ──────────────
+BUILD_COMBINATIONS():
+    Strength_I  : 1.25·DC + 1.50·DW + 1.75·(LL+IM)         (+ biến thể min 0.90/0.65)
+    Service_I   : 1.00·DC + 1.00·DW + 1.00·(LL+IM)
+    Extreme_I   : 1.25·DC + 1.50·DW + 0.50·(LL+IM) + 1.00·EQ
+    return L = {Strength_I, Service_I, Extreme_I}
 
 ─── HÀM PHỤ ───────────────────────────────────────────────────────────
+DECODE(x):                          # giải mã + sửa chữa về miền hợp lệ
+    nx,ny ← clamp số nguyên;  sx,sy ← clamp [s_min, bước_mép]
+    s_min = max(2.5·D, 750mm)        # TCVN 11823-10 (KHÁC 10304: 2.5D, không 3D)
+    return spec(t,nx,ny,sx,sy)
 
-DECODE(x):                          # giải mã + SỬA CHỮA về miền hợp lệ
-    nx ← clamp(round(nx), 1, nx_max);  ny ← clamp(round(ny), 1, ny_max)
-    nếu t = B: nx,ny ← max(·,2)
-    sx,sy ← clamp vào [s_min, min(6d, bước_mép)]   # 6d là CHẶN BIẾN
-    return spec(t, nx, ny, sx, sy)
-    # s_min = max(3d, d + thông_thủy)
+EVALUATE(x):                        # → (C, Θ)   có CACHE
+    spec ← DECODE(x);  nếu cache có: return
+    C_geom ← G(spec);  n ← |C_geom|;  L ← BUILD_COMBINATIONS()
+    for ℓ in L:
+        {Pi,Hi,Mi}^ℓ ← 𝒜(x, Σ; ℓ)        # MCOC — gồm p-multiplier (10.7.2.4)
+        S^ℓ ← 𝒮(x, Σ; ℓ);  δ^ℓ ← p-y      # lún (10.7.2), chuyển vị ngang
 
-EVALUATE(x):                        # → (F, Θ)   có CACHE
-    spec ← DECODE(x);  key ← (t,nx,ny,sx,sy)
-    nếu key ∈ cache: return cache[key]
-    C ← G(spec);  n ← |C|                          # |C|: kiểu B đã trừ cọc so le
-    {Pi^k} ← Ψ(C, {ℓk});  evals++                  # GỌI MCOC (chính xác)
-    rút Pmax, Pmin, Mx_max, My_max
+    # ── Θ = Σ tỉ số LRFD vượt 1, gộp mọi ràng buộc (vô thứ nguyên) ──
+    Θ ← 0
+    for ℓ in {Strength_I, Extreme_I}:                         # CƯỜNG ĐỘ + ĐẶC BIỆT
+        for i in cọc:
+            Θ += [ Pu,i^ℓ /(φc·Rn) − 1 ]+          # C1 nén  (10.5.5.2.3)
+            Θ += [ Tu,i^ℓ /(φup·Rn,up) − 1 ]+      # C2 nhổ
+            Θ += [ Hu,i^ℓ /(φℓ·Rℓ) − 1 ]+          # C3 ngang
+            Θ += [ tỉ số bao P–M tiết diện cọc − 1 ]+   # C4 (11823-5)
+        Θ += [ Mu /(φf·Mn) − 1 ]+                   # C5 uốn đài  (5.5.4.2: φf=0.9)
+        Θ += [ Vu /(φv·Vn_1way) − 1 ]+             # C6 cắt 1 phương
+        Θ += [ Vu /(φv·Vn_2way) − 1 ]+             # C7 chọc thủng
+        Θ += [ STM tỉ số /(φstm) − 1 ]+   (đài sâu) # C8 giàn ảo
+    for ℓ in {Service_I}:                                     # SỬ DỤNG
+        Θ += [ S^ℓ / S_tol − 1 ]+                  # C9 lún   (10.7.2.2)
+        Θ += [ δ^ℓ / δ_tol − 1 ]+                  # C10 chuyển vị ngang
+    for i≠j:                                                  # CẤU TẠO (10.7.1.2)
+        Θ += [ s_min / ‖pi−pj‖ − 1 ]+             # C11 khoảng cách tim
+    Θ += [ vi phạm mép đài (≥ D/2+225mm) ]+        # C12,C13
 
-    # --- vi phạm CỨNG (lõi R1–R6), chuẩn hóa, [a]+ = max(0,a) -------
-    Θ ← [s_min − s★]+/s_min                         # H2 khoảng cách min
-      + [max|x|+c − Lx/2]+/(Lx/2) + (theo y)        # H3,H4 mép bệ
-      + [Pmax − Po]+/Po                             # H5 nén
-      + [−Ct − Pmin]+/Ct      (nếu Ct>0)            # H6 nhổ
-      + [max(Mx,My) − M]+/M   (nếu M>0)             # H7 uốn
-      # --- ràng buộc TÙY CHỌN: chỉ cộng khi cờ bật ---
-      + [s† − 6d]+/(6d)               (nếu ENFORCE_SPACING_MAX)  # C1
-      + [Hmax − H]+/H                 (nếu R7 bật)               # C2
-      + [Pmax/Po + max(Mx,My)/M − 1]+ (nếu R8 bật)              # C3
+    # ── MỤC TIÊU: chi phí công trình ──
+    C ← n·(πD²/4)·Lc·c_bt + n·c_tc + (Bx·By·h)·c_bt + Ws(As)·c_s
+    cache[key] ← (C, Θ, ok=(Θ=0));  return
 
-    # --- MỤC TIÊU thuần (không phạt) -------------------------------
-    f1 ← n
-    f2 ← footprint(C)   hoặc   Pmax       # chế độ "bệ gọn" / "an toàn"
-    F ← (f1, f2);   ok ← (Θ = 0)
-    cache[key] ← (F, Θ, ok);  return cache[key]
-
-DOMINATES(a, b):                    # a ≺ b ?  (constrained-domination)
+DOMINATES(a,b):                     # a ≺ b ?  (constrained-domination)
     nếu Θa=0 và Θb>0:  return true            # khả thi thắng bất khả thi
     nếu Θa>0 và Θb>0:  return Θa < Θb         # ít vi phạm hơn thắng
-    return ParetoLE(Fa,Fb) và ParetoLT(Fa,Fb) # cả hai khả thi → Pareto
+    return Ca < Cb                            # cả hai khả thi → chi phí nhỏ hơn
 
 ─── CHƯƠNG TRÌNH CHÍNH ────────────────────────────────────────────────
-
-SOLVE():                            # Lx, Ly, d CỐ ĐỊNH
-    # 1) KHỞI TẠO có GIEO HẠT TẤT ĐỊNH (phủ vùng khả thi rất hẹp)
-    seeds ← {phương án gốc} ∪ {mọi lưới (t,nx,ny) ở 2 bước 3d,6d, sắp n tăng dần}
-    Pop ← env_select(EVAL_ALL(seeds) + EVAL_ALL(ngẫu_nhiên(μ)), μ)
-
+SOLVE():
+    # 1) KHỞI TẠO có GIEO HẠT TẤT ĐỊNH (phủ vùng khả thi hẹp)
+    seeds ← {phương án gốc} ∪ {lưới (t,nx,ny) ở 2.5D và bước thưa, sắp n tăng dần}
+    Pop ← env_select(EVAL_ALL(seeds) ∪ EVAL_ALL(ngẫu_nhiên(μ)), μ)
     # 2) TIẾN HÓA
-    for gen = 1 … T:
+    for gen = 1..T:
         if evals ≥ max_evals: break
         Off ← ∅
-        repeat μ/2 lần:
-            p1 ← TOURNAMENT(Pop);  p2 ← TOURNAMENT(Pop)     # theo (rank, crowd)
-            c1,c2 ← SBX(p1,p2,ηc);  c1,c2 ← POLY_MUTATE(c1,c2,ηm)
-            EVALUATE(c1); EVALUATE(c2);  Off ∪= {c1,c2}
-        Pop ← env_select(Pop ∪ Off, μ)                      # μ+λ elitism
+        repeat μ/2:
+            p1,p2 ← TOURNAMENT(Pop)×2            # theo (rank, crowd)
+            c1,c2 ← SBX(p1,p2,ηc);  MUTATE(ηm);  EVALUATE(c1,c2);  Off ∪= {c1,c2}
+        Pop ← env_select(Pop ∪ Off, μ)           # μ+λ elitism
+    # 3) KẾT QUẢ
+    valid ← {r ∈ cache : Θr=0}
+    return argmin_{r∈valid} Cr,  Pareto(chi phí, dự_trữ) [hỗ trợ quyết định]
 
-    # 3) KẾT QUẢ — tổng hợp trên TOÀN BỘ cache (không chỉ Pop cuối)
-    valid ← { r ∈ cache : Θr = 0 }
-    P ← các r ∈ valid không bị (n, f2) nào trội         # mặt Pareto khả thi
-    recommended ← argmin_{r∈valid} (n, f2)              # ít cọc nhất → mục tiêu phụ
-    return P, recommended
-
-env_select(R, μ):                   # chọn lọc môi trường NSGA-II
-    fronts ← FAST_NON_DOMINATED_SORT(R)   # dùng DOMINATES()
-    Pop ← ∅
-    for F in fronts:
-        CROWDING_DISTANCE(F)
-        nếu |Pop|+|F| ≤ μ:  Pop ∪= F
-        else: Pop ∪= (μ−|Pop| cá thể của F có crowd lớn nhất); break
-    return Pop
-
-═══════════════════════════════════════════════════════════════════════
- HAI TẦNG NGOÀI (mở rộng — KHÔNG thuộc vòng lõi)
-═══════════════════════════════════════════════════════════════════════
-
-SOLVE_EXTENDED(bảng đường kính 𝒟):
-    for d in 𝒟:                                  # quét đường kính
-        patch tiết diện d vào template MCOC; cập nhật [Po],[Ct],[M],[H]
-        Pd ← SOLVE()  với R7 (C2), R8 (C3) BẬT
-        best[d] ← argmin_{x∈Pd} n;  cost[d] ← n(best[d])·(π d²/4)   # chi phí vật liệu
-    d* ← argmin_d ( cost[d], n[d] )
-    x* ← best[d*]
-    (Lx,Ly) ← RESIZE_CAP(x*)                     # thu bệ — HẬU XỬ LÝ, không phải biến lõi
-    return x*, d*, (Lx,Ly)
+env_select(R,μ):                    # chọn lọc môi trường NSGA-II
+    fronts ← NON_DOMINATED_SORT(R)   # dùng DOMINATES()
+    lấy từng front + CROWDING_DISTANCE cho tới đủ μ (front cắt: ưu tiên crowd lớn)
 ```
 
-## Mạch logic tóm tắt
+## Mạch logic
 
-1. **Gieo hạt tất định** để phủ vùng khả thi hẹp → tránh báo "vô nghiệm" oan.
-2. **EVALUATE**: sinh tọa độ (G) → MCOC chấm (Ψ) → vi phạm cứng Θ (R1–R6; R7/R8 và 6d chỉ khi bật) → mục tiêu **thuần** (n, f2).
-3. **DOMINATES**: khả thi thắng bất khả thi → ít vi phạm thắng → Pareto.
-4. **Tiến hóa**: chọn → lai (SBX) → đột biến → giữ μ tốt nhất (elitism + crowding).
-5. **Cache + trần ngân sách** giảm số lần gọi MCOC.
-6. **Hai tầng ngoài**: quét đường kính theo chi phí vật liệu → thu bệ hậu xử lý.
+1. **Dựng tổ hợp tải** Strength I / Service I / Extreme I (hệ số TCVN 11823-3).
+2. **EVALUATE**: với mỗi tổ hợp, MCOC chấm nội lực (gồm hiệu ứng nhóm) + tính lún/chuyển vị → gộp **mọi** kiểm toán C1–C13 thành Θ (tỉ số LRFD vượt 1).
+3. **Khả thi ⟺ Θ=0**; so sánh bằng trội có ràng buộc → cực tiểu **chi phí C**.
+4. Tiến hóa NSGA-II + gieo hạt + cache + trần ngân sách.
 
-> Ghi chú trung thực: pseudocode này là **lời giải của mô hình rút gọn**. Bài toán
-> tổng quát (chi phí tổng; vị trí cọc tự do; lún/nền khối/thiết kế đài là ràng buộc)
-> nằm ở Phần I của `MO_HINH_TOI_UU.tex`; lún & thiết kế đài được kiểm bằng module riêng.
+> **Một mô hình — một bất đẳng thức LRFD — mọi trạng thái giới hạn luôn kiểm.**
+> Trị số φ, γ, s_min theo AASHTO LRFD mà TCVN 11823:2017 áp dụng (đối chiếu bản TCVN khi phát hành hồ sơ).
