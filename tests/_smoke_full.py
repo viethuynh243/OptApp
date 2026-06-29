@@ -96,6 +96,15 @@ def main():
     step('9. Chuyen phuong an sau ext', switch_all)
     step('10. Audit sau ext', audit_cycle)
 
+    def all_view_modes():
+        # Phu MOI che do xem (3D/SSI/thiet ke dai von khong duoc cac smoke khac cham)
+        app._load_demo_geotech()   # bom dia chat de SSI/capdesign co du lieu
+        for v in ('layout', 'audit', 'model3d', 'ssi', 'capdesign'):
+            app.view_mode.set(v); app.update_simulation(); app.plot_canvas._run_redraw()
+            root.update()
+        app.view_mode.set('layout')
+    step('10b. MOI che do xem (layout/audit/3D/SSI/capdesign)', all_view_modes)
+
     def tight_cap():
         # Be chat -> vo nghiem -> goi y noi be
         app.params['L_X'].set('6'); app.params['L_Y'].set('6')
@@ -114,6 +123,17 @@ def main():
     step('12. Doi K/c toi thieu', min_spacing_opt)
 
     step('13. Tab Hang loat', lambda: (app.notebook.select(1), root.update()))
+
+    def batch_dnd():
+        # Kéo-thả file vào danh sách (nhánh _re), rồi xóa/clear (qua batch_tab)
+        class _E:
+            data = "{%s}" % SAMPLE
+        app.batch_tab._batch_drop(_E())
+        assert len(app.batch_files) >= 1, "drag-drop khong them duoc file"
+        app.batch_tab.clear_all_batch()
+        root.update()
+    step('13b. Batch keo-tha + clear', batch_dnd)
+
     step('14. Quay lai Tab 1', lambda: (app.notebook.select(0), root.update()))
     step('15. Lam moi (clear)', lambda: (app.clear_loads(), root.update()))
 
