@@ -141,7 +141,8 @@ cmd** (`CREATE_NO_WINDOW` + `STARTUPINFO`/SW_HIDE).
 | `io_handlers/report_writer.py` | Báo cáo kỹ thuật `.md`/`.pdf` (R1–R8, lún Đ.7.4.4, ngang Phụ lục A Mục 6c) |
 | `core/tcvn.py` | TCVN 10304:2014: Rc,d (Đ.7.1.11), móng khối quy ước + lún (Đ.7.4.4 — Se + Boussinesq) |
 | `core/lrfd.py` | **TCVN 11823:2017 (LRFD)** — nguồn duy nhất γ/φ, `φ·Rn`, tải có hệ số, `apply_design_basis`. Chọn qua cờ `DESIGN_BASIS` (mặc định 11823). Xem [ADR-008](adr/ADR-008-co-so-thiet-ke-tcvn-11823.md), [kế hoạch migration](../project/MIGRATION_TCVN11823.md) |
-| `core/cap_design.py` | Thiết kế đài TCVN 5574:2018 (uốn, chọc thủng, cắt 1 phương Qb đầy đủ, STM) |
+| `core/cap_design.py` | Thiết kế đài — **uỷ quyền theo `DESIGN_BASIS`**: TCVN 11823-5:2017 (cầu) hoặc TCVN 5574:2018 (chỉ basis 10304, đối chiếu) |
+| `core/cap_design_lrfd.py` | **Thiết kế đài bê tông cầu TCVN 11823-5:2017 (LRFD)** — uốn φMn, cắt φVn, chọc thủng 2 phương, STM. TCVN 5574 KHÔNG dùng cho cầu |
 | `core/ssi_engine.py` | Tương tác đất–cọc thuần NumPy (dọc trục + ngang Winkler "m" + lún + nhóm) |
 | `core/version.py` | Nguồn version duy nhất (**v1.10.0**) |
 

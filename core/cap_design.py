@@ -156,7 +156,16 @@ def design_cap(coords, params, loads, calib=1.0):
 
     params cần: D_PILE, cap_thickness (H), cover, col_b, col_h, conc_grade,
     steel_grade. Thiếu hình học bắt buộc → trả {'ok': False, 'missing': [...]}.
+
+    CƠ SỞ THIẾT KẾ: nếu DESIGN_BASIS='TCVN11823' → uỷ quyền cho core.cap_design_lrfd
+    (TCVN 11823-5:2017 — bê tông cầu, LRFD). TCVN 5574:2018 (dưới đây) KHÔNG dùng cho
+    cầu — chỉ giữ cho cơ sở 'TCVN10304' (đối chiếu/hồi quy).
     """
+    from core import lrfd as _lrfd
+    if _lrfd.design_basis(params) == 'TCVN11823':
+        from core import cap_design_lrfd
+        return cap_design_lrfd.design_cap_lrfd(coords, params, loads, calib)
+
     coords = np.asarray(coords, dtype=float)
     n = len(coords)
     missing = []

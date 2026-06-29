@@ -1,6 +1,6 @@
 # Kế hoạch chuyển cơ sở thiết kế sang TCVN 11823:2017 (LRFD)
 
-> **Mã:** OA-DOC-14 · **Phiên bản:** 0.2 (Pha 1–4 — khung LRFD đã cài, chờ nghiệm thu hệ số) · **Cập nhật:** 2026-06-29 · **Trạng thái:** Draft
+> **Mã:** OA-DOC-14 · **Phiên bản:** 0.3 (Pha 1–4 — LRFD móng + bê tông 11823-5 đã cài; chờ nghiệm thu hệ số) · **Cập nhật:** 2026-06-29 · **Trạng thái:** Draft
 > **Căn cứ:** khảo sát `core/`, `io_handlers/`, `ui/` (trạng thái cơ sở TCVN 10304:2014) + tra cứu web TCVN 11823 / AASHTO LRFD. Quyết định gốc: [ADR-008](../reference/adr/ADR-008-co-so-thiet-ke-tcvn-11823.md) · [Backlog M1](BACKLOG.md).
 
 > ⚠️ **Mọi giá trị hệ số `γ`/`φ` trong tài liệu này là TRỊ THAM KHẢO theo AASHTO LRFD**
@@ -94,8 +94,9 @@ lớn nhất), đồng thời đổi công thức sức kháng và mọi chỗ s
 - **QĐ-3 — Nguồn `Rn` danh nghĩa:** hiện `[Po]` được coi là sức chịu **thiết kế**. LRFD
   cần **Rn danh nghĩa** + chọn **phương pháp** để app áp `φ`. Người dùng nhập Rn + method,
   hay vẫn nhập trực tiếp `φRn`?
-- **QĐ-4 — Thiết kế đài:** giữ `core/cap_design.py` theo TCVN 5574:2018 hay chuyển sang
-  **TCVN 11823-5** (BTCT cầu)? (5574 là BTCT chung; 11823-5 chuyên cầu.)
+- **QĐ-4 — Thiết kế đài: ĐÃ CHỐT → TCVN 11823-5:2017** (chủ dự án 2026-06-29: TCVN
+  5574 KHÔNG được áp dụng cho cầu). Đã cài [`core/cap_design_lrfd.py`](../../core/cap_design_lrfd.py)
+  (uốn φMn, cắt φVn, chọc thủng 2 phương, STM) + dispatch trong `cap_design.design_cap`.
 - **QĐ-5 — Lún/Sử dụng:** dùng lún theo **11823-10 §10.7.2.3** thay cho Đ.7.4.4 (10304)
   + 9362 hiện có?
 
@@ -144,6 +145,12 @@ lớn nhất), đồng thời đổi công thức sức kháng và mọi chỗ s
   và **banner "TRỊ THAM KHẢO — cần kỹ sư nghiệm thu"**.
 - Test: [`tests/test_lrfd.py`](../../tests/test_lrfd.py) (20 ca hand-calc + 1 tích hợp
   qua `run_nsga2`). Toàn bộ pytest xanh.
+- **Bê tông đài theo TCVN 11823-5:2017** (QĐ-4): [`core/cap_design_lrfd.py`](../../core/cap_design_lrfd.py)
+  — vật liệu f'c/fy/β1, uốn `Mu≤φMn` (5.6.3), cắt 1 phương `Vu≤φVn` β=2 (5.7.3.3),
+  chọc thủng 2 phương (5.12.8.6), STM. `cap_design.design_cap` uỷ quyền khi basis=11823;
+  đường TCVN 5574 chỉ còn cho basis 10304 (đối chiếu). UI `plot_canvas` hiển thị
+  basis-aware (φ·Rn). Test [`tests/test_cap_design_lrfd.py`](../../tests/test_cap_design_lrfd.py)
+  (10 ca). **TCVN 5574 KHÔNG dùng cho cầu.**
 
 **An toàn không phá vỡ:** khi CHƯA khai báo tham số LRFD (`R_N`, `load_type`/`LRFD_ENABLE`),
 mặc định 11823 hành xử **y hệt** đường cũ (γ=1, `P_LIMIT`=[Po] nhập) → mọi test 10304 vẫn
@@ -161,5 +168,8 @@ header vào `params`.)
   golden regression — increment riêng).
 - **Tổ hợp đa-loại-tải đồng thời** (hiện mỗi dòng tải áp 1 γ theo loại; cộng DC+DW+LL
   đồng thời cần nhóm `combo` — QĐ-1).
-- **Lún trạng thái Sử dụng theo 11823-10 §10.7.2.3** (QĐ-5) & **đài theo 11823-5** (QĐ-4).
+- **Lún trạng thái Sử dụng theo 11823-10 §10.7.2.3** (QĐ-5) — `core/tcvn.py` lún hiện
+  còn theo Đ.7.4.4 (10304) khi tính ở tab SSI.
+- **f'c quy đổi từ cấp B** trong `cap_design_lrfd` là GẦN ĐÚNG — nên nhập `FC` trực
+  tiếp + bổ sung cấp C vào combobox GUI (increment).
 - Cập nhật `docs/reference/AUDIT_CONG_THUC_TCVN.md` sang khung 11823 sau nghiệm thu.

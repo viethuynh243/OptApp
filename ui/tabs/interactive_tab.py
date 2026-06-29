@@ -503,7 +503,7 @@ class InteractiveTab:
             right_frame,
             text=("Phạm vi: bố trí/tối ưu dùng mô hình bệ cứng. Tab “SSI (đất–cọc)” "
                   "thêm Hx/Hy/Mz (nền Winkler) + hiệu ứng nhóm cọc (p-mult) + độ lún; "
-                  "tab “Thiết kế đài” kiểm toán uốn/chọc thủng/cắt theo TCVN 5574:2018. "
+                  "tab “Thiết kế đài” kiểm toán uốn/chọc thủng/cắt theo TCVN 11823-5:2017 (bê tông cầu, LRFD). "
                   "Đều là THIẾT KẾ SƠ BỘ — hồ sơ chi tiết vẫn cần MCOC/FEM đầy đủ."),
             bg="white", fg="#888", font=("Arial", 8), anchor="w",
             justify="left", wraplength=720)

@@ -14,7 +14,10 @@ from core import cap_design as cap
 
 COORDS = np.array([(1.5, 1.5), (-1.5, 1.5), (1.5, -1.5), (-1.5, -1.5)], dtype=float)
 LOADS = [{'N': 2000.0, 'Mx': 0.0, 'My': 0.0}]
-PARAMS = {'D_PILE': 1.0, 'cap_thickness': 2.0, 'cover': 0.10,
+# DESIGN_BASIS='TCVN10304' để kiểm ĐÚNG đường TCVN 5574:2018 (đài cọc cũ). Mặc định
+# dự án nay là TCVN11823 → design_cap uỷ quyền sang cap_design_lrfd (test riêng:
+# tests/test_cap_design_lrfd.py). 5574 KHÔNG dùng cho cầu — chỉ giữ đối chiếu/hồi quy.
+PARAMS = {'D_PILE': 1.0, 'cap_thickness': 2.0, 'cover': 0.10, 'DESIGN_BASIS': 'TCVN10304',
           'col_b': 1.0, 'col_h': 1.0, 'conc_grade': 'B25', 'steel_grade': 'CB400-V'}
 TF = cap.TF_TO_KN * cap.KN_TO_N    # N cho 1 Tấn
 

@@ -696,9 +696,10 @@ class PlotCanvas:
         self.fig.subplots_adjust(left=0.02, right=0.98, top=0.95, bottom=0.03)
 
         res = cap.design_cap(coords, params, loads)
+        std = res.get('standard', 'TCVN 5574:2018')   # cơ sở thiết kế (11823-5 cầu / 5574)
         if not res.get('ok'):
             miss = "\n".join("  • " + m for m in res.get('missing', []))
-            ax.set_title("THIẾT KẾ ĐÀI CỌC (TCVN 5574:2018)", fontsize=11 * fs,
+            ax.set_title(f"THIẾT KẾ ĐÀI CỌC ({std})", fontsize=11 * fs,
                          fontweight='bold', color='#b03a2e', pad=8)
             ax.text(0.5, 0.6, "Thiếu dữ liệu để thiết kế đài — hãy nhập ở khung "
                               "“Nền & đài cọc”:", ha='center', va='center',
@@ -713,40 +714,85 @@ class PlotCanvas:
         sx, sy = res['shear']['x'], res['shear']['y']
         stm = res['stm']
         tcol = 'navy' if res['status'] == 'ĐẠT' else '#b03a2e'
-        ax.set_title(f"THIẾT KẾ ĐÀI CỌC (TCVN 5574:2018)  —  {res['status']}",
+        ax.set_title(f"THIẾT KẾ ĐÀI CỌC ({std})  —  {res['status']}",
                      fontsize=11 * fs, fontweight='bold', color=tcol, pad=8)
 
-        rows = [
-            ('— Vật liệu —',
-             f"{m['conc']} (Rb={m['Rb']}, Rbt={m['Rbt']} MPa) · {m['steel']} "
-             f"(Rs={m['Rs']:.0f} MPa) · ξ_R={m['xi_R']:.3f}", None),
-            ('— Hình học —',
-             f"đài {g['Lx']:.1f}×{g['Ly']:.1f}×H{g['H']:.1f} m · h0={g['h0_mm'] / 1000:.2f} m"
-             f" · cột {g['col_b']:.1f}×{g['col_h']:.1f} m · N_cột={g['N_col_T']:.0f} T", None),
-            ('Uốn phương X',
-             f"M={fx['M'] / NMM_PER_TM:.0f} T·m → As={fx['As'] / 100:.0f} cm² "
-             f"(min {fx['As_min'] / 100:.0f}) · ξ={fx['xi']:.3f}≤{fx['xi_R']:.3f}", fx['ok']),
-            ('Uốn phương Y',
-             f"M={fy['M'] / NMM_PER_TM:.0f} T·m → As={fy['As'] / 100:.0f} cm² "
-             f"(min {fy['As_min'] / 100:.0f}) · ξ={fy['xi']:.3f}≤{fy['xi_R']:.3f}", fy['ok']),
-            ('Chọc thủng cột',
-             f"F={pc['F'] / TF:.0f} T / F_ult={pc['F_ult'] / TF:.0f} T · "
-             f"u_m={pc['u_m'] / 1000:.2f} m · η={pc['ratio']:.2f}"
-             f" ({pc['n_inside']} cọc trong tháp)", pc['ok']),
-            ('Chọc thủng cọc',
-             f"P={pp['F'] / TF:.0f} T / F_ult={pp['F_ult'] / TF:.0f} T · η={pp['ratio']:.2f}"
-             f" (cọc #{pp['pile_index'] + 1})", pp['ok']),
-            ('Cắt 1 phương X',
-             f"Q={sx['Q'] / TF:.0f} T vs [0.5·Rbt·b·h0]={sx['Q_concrete'] / TF:.0f} T"
-             + ("  → cần cốt đai" if sx['need_stirrups'] else "  → bê tông đủ"), sx['ok']),
-            ('Cắt 1 phương Y',
-             f"Q={sy['Q'] / TF:.0f} T vs [0.5·Rbt·b·h0]={sy['Q_concrete'] / TF:.0f} T"
-             + ("  → cần cốt đai" if sy['need_stirrups'] else "  → bê tông đủ"), sy['ok']),
-            ('Giàn ảo (STM)',
-             (f"ĐÀI SÂU (a/h0<1) — nên kiểm bằng STM · " if stm['deep'] else "đài không sâu · ")
-             + f"T={stm['T'] / TF:.0f} T → As_tie={stm['As_tie'] / 100:.0f} cm² · θ={stm['theta_deg']:.0f}°",
-             None if not stm['deep'] else True),
-        ]
+        if std.startswith('TCVN 11823'):
+            # ── TCVN 11823-5:2017 (LRFD): φ·Rn ─────────────────────────────
+            rows = [
+                ('— Vật liệu —',
+                 f"{m['conc']} (f'c={m['fc']:.0f}, fy={m['fy']:.0f} MPa) · {m['steel']} "
+                 f"· β1={m['beta1']:.2f} · φ_uốn={m['phi_f']}, φ_cắt={m['phi_v']}", None),
+                ('— Hình học —',
+                 f"đài {g['Lx']:.1f}×{g['Ly']:.1f}×H{g['H']:.1f} m · de={g['h0_mm'] / 1000:.2f} m"
+                 f" · dv={g['dv_mm'] / 1000:.2f} m · cột {g['col_b']:.1f}×{g['col_h']:.1f} m"
+                 f" · N_cột={g['N_col_T']:.0f} T", None),
+                ('Uốn phương X',
+                 f"Mu={fx['Mu'] / NMM_PER_TM:.0f} T·m → As={fx['As'] / 100:.0f} cm² "
+                 f"(min {fx['As_min'] / 100:.0f}) · c/de={fx['c_over_de']:.2f}≤0,42 · "
+                 f"φMn={fx['Mr'] / NMM_PER_TM:.0f} T·m", fx['ok']),
+                ('Uốn phương Y',
+                 f"Mu={fy['Mu'] / NMM_PER_TM:.0f} T·m → As={fy['As'] / 100:.0f} cm² "
+                 f"(min {fy['As_min'] / 100:.0f}) · c/de={fy['c_over_de']:.2f}≤0,42 · "
+                 f"φMn={fy['Mr'] / NMM_PER_TM:.0f} T·m", fy['ok']),
+                ('Chọc thủng cột',
+                 f"Vu={pc['Vu'] / TF:.0f} T / φVn={pc['Vr'] / TF:.0f} T · "
+                 f"bo={pc['bo'] / 1000:.2f} m · η={pc['ratio']:.2f}"
+                 f" ({pc['n_inside']} cọc trong chu vi)", pc['ok']),
+                ('Chọc thủng cọc',
+                 f"P={pp['Vu'] / TF:.0f} T / φVn={pp['Vr'] / TF:.0f} T · η={pp['ratio']:.2f}"
+                 f" (cọc #{pp['pile_index'] + 1})", pp['ok']),
+                ('Cắt 1 phương X',
+                 f"Vu={sx['Vu'] / TF:.0f} T vs φVn={sx['Vr'] / TF:.0f} T"
+                 + ("  → cần cốt đai" if sx['need_stirrups'] else "  → bê tông đủ"), sx['ok']),
+                ('Cắt 1 phương Y',
+                 f"Vu={sy['Vu'] / TF:.0f} T vs φVn={sy['Vr'] / TF:.0f} T"
+                 + ("  → cần cốt đai" if sy['need_stirrups'] else "  → bê tông đủ"), sy['ok']),
+                ('Giàn ảo (STM)',
+                 (f"ĐÀI SÂU (a/de<1) — nên kiểm bằng STM · " if stm['deep'] else "đài không sâu · ")
+                 + f"T={stm['T'] / TF:.0f} T → As_tie={stm['As_tie'] / 100:.0f} cm² · θ={stm['theta_deg']:.0f}°",
+                 None if not stm['deep'] else True),
+            ]
+            note = ("Ghi chú: thiết kế sơ bộ theo TCVN 11823-5:2017 — bê tông cầu, LRFD "
+                    "(uốn 5.6.3, cắt 5.7.3, chọc thủng 5.12.8). φ·Rn = sức kháng có hệ số; "
+                    "η = Vu/φVn. ⚠️ Hệ số φ là TRỊ THAM KHẢO (AASHTO) — cần kỹ sư nghiệm thu "
+                    "với TCVN 11823-5. (TCVN 5574 KHÔNG dùng cho cầu.)")
+        else:
+            # ── TCVN 5574:2018 (sức chịu tải cho phép) — đường đối chiếu 10304 ─
+            rows = [
+                ('— Vật liệu —',
+                 f"{m['conc']} (Rb={m['Rb']}, Rbt={m['Rbt']} MPa) · {m['steel']} "
+                 f"(Rs={m['Rs']:.0f} MPa) · ξ_R={m['xi_R']:.3f}", None),
+                ('— Hình học —',
+                 f"đài {g['Lx']:.1f}×{g['Ly']:.1f}×H{g['H']:.1f} m · h0={g['h0_mm'] / 1000:.2f} m"
+                 f" · cột {g['col_b']:.1f}×{g['col_h']:.1f} m · N_cột={g['N_col_T']:.0f} T", None),
+                ('Uốn phương X',
+                 f"M={fx['M'] / NMM_PER_TM:.0f} T·m → As={fx['As'] / 100:.0f} cm² "
+                 f"(min {fx['As_min'] / 100:.0f}) · ξ={fx['xi']:.3f}≤{fx['xi_R']:.3f}", fx['ok']),
+                ('Uốn phương Y',
+                 f"M={fy['M'] / NMM_PER_TM:.0f} T·m → As={fy['As'] / 100:.0f} cm² "
+                 f"(min {fy['As_min'] / 100:.0f}) · ξ={fy['xi']:.3f}≤{fy['xi_R']:.3f}", fy['ok']),
+                ('Chọc thủng cột',
+                 f"F={pc['F'] / TF:.0f} T / F_ult={pc['F_ult'] / TF:.0f} T · "
+                 f"u_m={pc['u_m'] / 1000:.2f} m · η={pc['ratio']:.2f}"
+                 f" ({pc['n_inside']} cọc trong tháp)", pc['ok']),
+                ('Chọc thủng cọc',
+                 f"P={pp['F'] / TF:.0f} T / F_ult={pp['F_ult'] / TF:.0f} T · η={pp['ratio']:.2f}"
+                 f" (cọc #{pp['pile_index'] + 1})", pp['ok']),
+                ('Cắt 1 phương X',
+                 f"Q={sx['Q'] / TF:.0f} T vs [0.5·Rbt·b·h0]={sx['Q_concrete'] / TF:.0f} T"
+                 + ("  → cần cốt đai" if sx['need_stirrups'] else "  → bê tông đủ"), sx['ok']),
+                ('Cắt 1 phương Y',
+                 f"Q={sy['Q'] / TF:.0f} T vs [0.5·Rbt·b·h0]={sy['Q_concrete'] / TF:.0f} T"
+                 + ("  → cần cốt đai" if sy['need_stirrups'] else "  → bê tông đủ"), sy['ok']),
+                ('Giàn ảo (STM)',
+                 (f"ĐÀI SÂU (a/h0<1) — nên kiểm bằng STM · " if stm['deep'] else "đài không sâu · ")
+                 + f"T={stm['T'] / TF:.0f} T → As_tie={stm['As_tie'] / 100:.0f} cm² · θ={stm['theta_deg']:.0f}°",
+                 None if not stm['deep'] else True),
+            ]
+            note = ("Ghi chú: thiết kế sơ bộ theo TCVN 5574:2018 (uốn 8.1.2, cắt 8.1.3, "
+                    "chọc thủng 8.1.6). η = tỷ số huy động. Cọc đối xứng, tải đúng tâm → "
+                    "bỏ số hạng mô men trong chọc thủng (thiên an toàn).")
 
         C_PASS, C_FAIL = '#27ae60', '#c0392b'
         y = 0.92
@@ -765,10 +811,7 @@ class PlotCanvas:
                         bbox=dict(boxstyle='round,pad=0.3', facecolor=bc, edgecolor='none'))
             y -= dy
 
-        ax.text(0.02, y - 0.005,
-                "Ghi chú: thiết kế sơ bộ theo TCVN 5574:2018 (uốn 8.1.2, cắt 8.1.3, "
-                "chọc thủng 8.1.6). η = tỷ số huy động. Cọc đối xứng, tải đúng tâm → "
-                "bỏ số hạng mô men trong chọc thủng (thiên an toàn).",
+        ax.text(0.02, y - 0.005, note,
                 ha='left', va='top', fontsize=7.3 * fs, color='#888', wrap=True)
         self.canvas.draw_idle()
 

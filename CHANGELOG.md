@@ -17,6 +17,10 @@ Nguồn version duy nhất: `core/version.py`.
   kiểm đổi từ `N ≤ Rc,d` (allowable) sang `Σγ·Q ≤ φ·Rn` (LRFD). MCOC vẫn là oracle.
 - **Không phá vỡ:** chưa khai báo tham số LRFD → hành xử y hệt đường cũ (γ=1, [Po] nhập);
   toàn bộ pytest cũ vẫn xanh. Cấu hình qua cột file input (chưa cần GUI).
+- **Bê tông đài cọc theo TCVN 11823-5:2017** (`core/cap_design_lrfd.py`, mới): uốn
+  `Mu≤φMn`, cắt `Vu≤φVn` (β=2), chọc thủng 2 phương, STM. `cap_design.design_cap` uỷ
+  quyền khi basis=11823; **TCVN 5574:2018 KHÔNG dùng cho cầu** (chỉ còn cho basis 10304
+  để đối chiếu). UI "Thiết kế đài" hiển thị basis-aware (φ·Rn).
 - **Báo cáo** thêm "Mục 0 — Cơ sở thiết kế" (basis, φ/γ, trạng thái, banner nghiệm thu).
 - **Tài liệu** `docs/` tái cấu trúc theo SDLC (guides/reference/project + adr); gỡ
   plans/mcoc_input_sample/words_dict/vault khỏi git. Test: `tests/test_lrfd.py`.

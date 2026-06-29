@@ -4,8 +4,15 @@
 
 
 > Tập hợp nguồn đã dùng khi rà & cài công thức (Plan 023/024, v1.10.0). Gồm bản trích
-> trong kho (`words_dict/`) và nguồn trực tuyến đối chiếu. Khi convert PDF→MD có lỗi OCR
-> ở một số công thức → đã kiểm chéo bằng keyword + nguồn web bên dưới.
+> trong kho (`words_dict/`, **lưu nội bộ — không kèm repo**) và nguồn trực tuyến đối chiếu.
+> Khi convert PDF→MD có lỗi OCR ở một số công thức → đã kiểm chéo bằng keyword + nguồn web.
+
+> ⚠️ **THIẾT KẾ CẦU:** TCVN 10304:2014 và **TCVN 5574:2018 KHÔNG áp dụng cho cầu**.
+> Cơ sở thiết kế hiện hành của OptApp là bộ **TCVN 11823:2017** (LRFD): tải/hệ số
+> **11823-3**, **kết cấu bê tông 11823-5**, **nền móng 11823-10**. Các điều khoản 10304/5574
+> dưới đây chỉ còn để **đối chiếu lịch sử** (cơ sở `DESIGN_BASIS='TCVN10304'`). Hệ số
+> 11823 hiện là **trị tham khảo AASHTO — chờ kỹ sư nghiệm thu**. Xem
+> [kế hoạch migration](../project/MIGRATION_TCVN11823.md) và [ADR-008](adr/ADR-008-co-so-thiet-ke-tcvn-11823.md).
 
 ## 1. Bản trích trong kho (words_dict/)
 | Tài liệu | File | Điều/khoản dùng (số dòng) |
