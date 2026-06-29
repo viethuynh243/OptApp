@@ -34,7 +34,8 @@ Strength / Service / Extreme Event). Phạm vi ảnh hưởng (sơ bộ):
 **Cần trước khi thực hiện:** bản tiêu chuẩn TCVN 11823:2017 (đặc biệt **phần 10 —
 Móng** và phần 3 — Tải trọng & hệ số tải) ở dạng tra cứu được; kỹ sư kết cấu/địa
 kỹ thuật xác nhận ánh xạ hệ số. Xem [ADR-008](../reference/adr/ADR-008-co-so-thiet-ke-tcvn-11823.md)
-(quyết định định hướng) và kế hoạch migration sẽ lập riêng.
+(quyết định định hướng) và **[kế hoạch migration chi tiết — Pha 1](MIGRATION_TCVN11823.md)**
+(bản đồ điểm chạm code + danh mục γ/φ + quyết định cần chốt).
 
 > **Lưu ý đối chiếu tài liệu hiện hành:** mọi tài liệu trong `docs/` đang mô tả
 > **trạng thái thực tế của code** (cơ sở TCVN 10304:2014). KHÔNG sửa hồi tố các

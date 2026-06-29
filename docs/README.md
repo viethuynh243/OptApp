@@ -42,6 +42,7 @@ bản. Bắt đầu nhanh: [README gốc của repo](../README.md) và [Hướng
 | OA-DOC-11 | [project/SO_LIEU_DEMO.md](project/SO_LIEU_DEMO.md) | Kiểm thử | Số liệu demo T1–T22 (ĐẠT/KHÔNG ĐẠT) |
 | OA-DOC-12 | [project/BACKLOG.md](project/BACKLOG.md) | Quản trị | Vấn đề/cải tiến đang mở, định hướng lớn |
 | OA-DOC-13 | [project/spike_parallel_mcoc.md](project/spike_parallel_mcoc.md) | Spike | Khảo sát song song hóa lời gọi MCOC |
+| OA-DOC-14 | [project/MIGRATION_TCVN11823.md](project/MIGRATION_TCVN11823.md) | Kế hoạch | Migration cơ sở thiết kế sang **TCVN 11823:2017** (LRFD) — Pha 1: khảo sát & kế hoạch |
 
 ## 2. Quy ước cập nhật tài liệu
 
