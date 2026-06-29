@@ -1,6 +1,6 @@
 # ADR-008 — Chuyển cơ sở thiết kế sang TCVN 11823:2017
 
-> **Mã:** OA-ADR-008 · **Trạng thái:** Đã duyệt định hướng — **CHƯA thực hiện** (proposed/accepted-direction) · **Ngày:** 2026-06-29
+> **Mã:** OA-ADR-008 · **Trạng thái:** Đang thực hiện — **khung LRFD đã cài** (cờ `DESIGN_BASIS`, `core/lrfd.py`); chờ nghiệm thu hệ số γ/φ + form GUI · **Ngày:** 2026-06-29
 
 **Bối cảnh:** code hiện tại lấy **TCVN 10304:2014** (Móng cọc — thiết kế) làm cơ
 sở: sức chịu tải cho phép `Rc,d`, ràng buộc allowable `Pmax ≤ [Po]`, lún theo

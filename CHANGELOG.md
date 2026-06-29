@@ -3,6 +3,24 @@
 Tất cả thay đổi đáng kể của ứng dụng. Phiên bản theo [SemVer](https://semver.org/lang/vi/).
 Nguồn version duy nhất: `core/version.py`.
 
+## [Chưa phát hành]
+
+### Khung cơ sở thiết kế TCVN 11823:2017 (LRFD) — chuyển khỏi TCVN 10304:2014
+> Định hướng bắt buộc của chủ dự án ([ADR-008](docs/reference/adr/ADR-008-co-so-thiet-ke-tcvn-11823.md)).
+> Đây là **chỉnh sửa lớn**, làm theo pha. Trị số γ/φ hiện là **tham khảo AASHTO — cần
+> kỹ sư nghiệm thu** với TCVN 11823-3/-10. Chi tiết: [docs/project/MIGRATION_TCVN11823.md](docs/project/MIGRATION_TCVN11823.md).
+- **`core/lrfd.py`** (mới): nguồn duy nhất LRFD — hệ số tải γ (Cường độ I–V / Sử dụng /
+  Đặc biệt), hệ số sức kháng φ cọc (đóng/khoan, nén/kéo, theo phương pháp; móng 1 cọc
+  giảm 20%), `φ·Rn`, tải có hệ số `Σγ·Q`, `apply_design_basis`.
+- **Cờ `DESIGN_BASIS`** (`core/constants.py`, mặc định `'TCVN11823'`): điều phối tại
+  `run_nsga2`/`run_optimization`/`run_pareto_refinement`/`report_writer`/UI. Tiêu chí
+  kiểm đổi từ `N ≤ Rc,d` (allowable) sang `Σγ·Q ≤ φ·Rn` (LRFD). MCOC vẫn là oracle.
+- **Không phá vỡ:** chưa khai báo tham số LRFD → hành xử y hệt đường cũ (γ=1, [Po] nhập);
+  toàn bộ pytest cũ vẫn xanh. Cấu hình qua cột file input (chưa cần GUI).
+- **Báo cáo** thêm "Mục 0 — Cơ sở thiết kế" (basis, φ/γ, trạng thái, banner nghiệm thu).
+- **Tài liệu** `docs/` tái cấu trúc theo SDLC (guides/reference/project + adr); gỡ
+  plans/mcoc_input_sample/words_dict/vault khỏi git. Test: `tests/test_lrfd.py`.
+
 ## [1.10.0] — 2026-06-28
 
 ### Bám sát TCVN cho địa kỹ thuật & thiết kế đài (Plan 024 — CỐ Ý đổi kết quả tính)

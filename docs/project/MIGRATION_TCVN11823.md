@@ -1,6 +1,6 @@
 # Kế hoạch chuyển cơ sở thiết kế sang TCVN 11823:2017 (LRFD)
 
-> **Mã:** OA-DOC-14 · **Phiên bản:** 0.1 (Pha 1 — khảo sát & kế hoạch) · **Cập nhật:** 2026-06-29 · **Trạng thái:** Draft
+> **Mã:** OA-DOC-14 · **Phiên bản:** 0.2 (Pha 1–4 — khung LRFD đã cài, chờ nghiệm thu hệ số) · **Cập nhật:** 2026-06-29 · **Trạng thái:** Draft
 > **Căn cứ:** khảo sát `core/`, `io_handlers/`, `ui/` (trạng thái cơ sở TCVN 10304:2014) + tra cứu web TCVN 11823 / AASHTO LRFD. Quyết định gốc: [ADR-008](../reference/adr/ADR-008-co-so-thiet-ke-tcvn-11823.md) · [Backlog M1](BACKLOG.md).
 
 > ⚠️ **Mọi giá trị hệ số `γ`/`φ` trong tài liệu này là TRỊ THAM KHẢO theo AASHTO LRFD**
@@ -127,3 +127,39 @@ lớn nhất), đồng thời đổi công thức sức kháng và mọi chỗ s
 - TCVN 11823-3:2017 (Tải trọng & hệ số tải trọng) — tổ hợp & `γ` (Bảng 3.4.1-1).
 - AASHTO LRFD Bridge Design Specifications, Table 3.4.1-1 (tổ hợp/`γ`) và §10.5.5.2
   (φ cọc) — cơ sở của TCVN 11823 (đối chiếu national annex).
+
+## 9. Trạng thái triển khai (cập nhật 2026-06-29)
+
+**ĐÃ CÀI (Pha 2–4 lõi):**
+- [`core/lrfd.py`](../../core/lrfd.py) — **nguồn duy nhất** LRFD: `LOAD_FACTORS` (γ),
+  `RESISTANCE_FACTORS` (φ), `factored_resistance` (φ·Rn, giảm 20% móng 1 cọc),
+  `factor_loads`/`demand_loads` (Σγ·Q), `apply_lrfd_capacities`, `apply_design_basis`.
+- Cờ `DESIGN_BASIS='TCVN11823'` (mặc định) trong [`core/constants.py`](../../core/constants.py);
+  điều phối tại `run_nsga2` / `run_optimization` / `run_pareto_refinement` /
+  `report_writer.build_report_text` / UI `get_params_dict`.
+- Cơ chế lắp KHÉO: `P_LIMIT = φ·Rn` (sức kháng) + tải nhân γ (demand) ⇒ phép so
+  `pmax ≤ P_LIMIT` sẵn có thành `Σγ·Q ≤ φ·Rn`. MCOC vẫn là oracle, **không** tăng số
+  lần gọi (QĐ-2: factor tải trước, MCOC chạy 1 lần/phương án trên cả bộ tải).
+- Báo cáo có **Mục 0 — Cơ sở thiết kế**: nêu basis, φ/γ đã dùng, trạng thái cấu hình,
+  và **banner "TRỊ THAM KHẢO — cần kỹ sư nghiệm thu"**.
+- Test: [`tests/test_lrfd.py`](../../tests/test_lrfd.py) (20 ca hand-calc + 1 tích hợp
+  qua `run_nsga2`). Toàn bộ pytest xanh.
+
+**An toàn không phá vỡ:** khi CHƯA khai báo tham số LRFD (`R_N`, `load_type`/`LRFD_ENABLE`),
+mặc định 11823 hành xử **y hệt** đường cũ (γ=1, `P_LIMIT`=[Po] nhập) → mọi test 10304 vẫn
+xanh; báo cáo ghi rõ "CHƯA cấu hình tải LRFD".
+
+**Cách dùng ngay (qua FILE input — chưa cần GUI):** thêm các cột params:
+`DESIGN_BASIS=TCVN11823`, `LRFD_ENABLE=1`, `R_N=<sức kháng nén danh nghĩa>`,
+`R_N_T=<kéo>`, `PILE_TYPE=driven|drilled`, `RESISTANCE_METHOD=static_load_test|static_analysis|...`,
+`STRENGTH_STATE=STRENGTH_I`, `SINGLE_PILE=1` (nếu móng 1 cọc). (Parser nạp mọi cột
+header vào `params`.)
+
+**CÒN LẠI (chưa làm):**
+- **Nghiệm thu trị số γ/φ** với bản TCVN 11823-3/-10 (đang là trị tham khảo AASHTO).
+- **Form GUI** nhập `R_N`/phương pháp/`load_type` (tôn trọng 3 cổng an toàn GUI +
+  golden regression — increment riêng).
+- **Tổ hợp đa-loại-tải đồng thời** (hiện mỗi dòng tải áp 1 γ theo loại; cộng DC+DW+LL
+  đồng thời cần nhóm `combo` — QĐ-1).
+- **Lún trạng thái Sử dụng theo 11823-10 §10.7.2.3** (QĐ-5) & **đài theo 11823-5** (QĐ-4).
+- Cập nhật `docs/reference/AUDIT_CONG_THUC_TCVN.md` sang khung 11823 sau nghiệm thu.

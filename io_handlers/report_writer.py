@@ -55,7 +55,10 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
     if not cfg:
         return f"# BAN TINH MONG COC — {project_name}\n\nKhong tim duoc phuong an thoa man.\n"
 
-    tcvn.apply_design_capacities(params)   # bảo đảm Po = Rc,d (Điều 7.1.11) nếu có Rc,k
+    from core import lrfd
+    # Cơ sở thiết kế: TCVN 11823 (LRFD) đặt Po=φ·Rn + tải có hệ số; TCVN 10304 đặt Rc,d.
+    params, loads = lrfd.apply_design_basis(params, loads)
+    _design_basis = lrfd.design_basis(params)
     coords = np.asarray(cfg['coords'], dtype=float)
     n = len(coords)
     d = params['D_PILE']
@@ -88,9 +91,42 @@ def build_report_text(results, params, loads, project_name="Cong trinh",
     L = []
     L.append(f"# BAN TINH KIEM TRA & TOI UU BO TRI MONG COC")
     L.append(f"## Cong trinh: {project_name}\n")
-    L.append(f"OptApp v{__version__}. Tieu chuan: TCVN 10304:2014 (mong coc); "
-             "TCVN 11823 (cau, LRFD). Noi luc tinh bang MCOC (chinh xac). "
+    L.append(f"OptApp v{__version__}. Noi luc tinh bang MCOC (chinh xac). "
              "Don vi: Tan (T), T.m.\n")
+
+    # 0. Cơ sở thiết kế — minh bạch tiêu chuẩn + hệ số để kỹ sư đối chiếu/nghiệm thu.
+    from core import lrfd as _lrfd
+    src = params.get('_capacity_source', 'input')
+    Po_rep = params.get('P_LIMIT', 0.0) or 0.0
+    L.append("## 0. CO SO THIET KE\n")
+    if _design_basis == 'TCVN11823':
+        lf = params.get('_lrfd_factors', {}) or {}
+        L.append("**TCVN 11823:2017 (Thiet ke cau duong bo) — LRFD.** "
+                 "Tieu chi trang thai gioi han: Σγ·Q ≤ φ·Rn. Noi luc van do MCOC tinh (oracle).\n")
+        if src == 'tcvn_11823_10':
+            note_sp = ", mong 1 coc → φ×0,8" if lf.get('single_pile') else ""
+            L.append("- Suc khang co he so: φ = %.2f (coc %s, phuong phap '%s'%s); "
+                     "P_LIMIT = φ·Rn = %.1f T (Rn = %.1f T)."
+                     % (lf.get('phi_c', 0.0), lf.get('pile_type', '?'),
+                        lf.get('method', '?'), note_sp, Po_rep, lf.get('R_n', 0.0)))
+        else:
+            L.append("- Suc khang: P_LIMIT = %.1f T (NHAP TAY, coi la φ·Rn — CHUA khai bao "
+                     "Rn + phuong phap de tu tinh φ theo TCVN 11823-10)." % Po_rep)
+        if _lrfd.lrfd_load_factoring_enabled(params):
+            st = params.get('STRENGTH_STATE', _lrfd.DEFAULT_STRENGTH_STATE)
+            L.append("- Tai co he so: da ap to hop %s (γ theo loai tai). pmax la hieu ung tai CO HE SO."
+                     % st)
+        else:
+            L.append("- Tai co he so: **CHUA cau hinh** (chua gan load_type / LRFD_ENABLE) → γ=1,0; "
+                     "pmax la tai DANH NGHIA. Day CHUA phai kiem LRFD day du.")
+        L.append("\n> ⚠️ He so γ/φ la TRI THAM KHAO (theo AASHTO LRFD) — CAN KY SU doi chieu, "
+                 "nghiem thu voi TCVN 11823-3:2017 (tai) & TCVN 11823-10:2017 (nen mong) truoc khi "
+                 "dung cho ho so. Xem docs/project/MIGRATION_TCVN11823.md.\n")
+    else:
+        cap_note = "(Rc,d, Dieu 7.1.11)" if src == 'tcvn_7.1.11' else "(nhap tay)"
+        L.append("**TCVN 10304:2014 (Mong coc) — suc chiu tai cho phep.** "
+                 "Tieu chi: N ≤ Rc,d. P_LIMIT = %.1f T %s. Noi luc do MCOC tinh.\n"
+                 % (Po_rep, cap_note))
 
     # 1. Số liệu đầu vào
     L.append("## 1. SO LIEU DAU VAO\n")

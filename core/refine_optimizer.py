@@ -396,8 +396,8 @@ def run_pareto_refinement(params, loads, evaluator, log=None, budget=25):
          hoặc hết ngân sách gọi MCOC.
     """
     log = log or (lambda m: print(m))
-    from core import tcvn
-    tcvn.apply_design_capacities(params)   # [Po]/[Ct] -> Rc,d/Rt,d (Điều 7.1.11) nếu có Rc,k
+    from core import lrfd
+    params, loads = lrfd.apply_design_basis(params, loads)  # cơ sở thiết kế (LRFD φRn / Rc,d) + tải có hệ số
     coords0 = np.asarray(params['original_coords'], dtype=float)
     history = []
     n_calls = [0]

@@ -448,8 +448,10 @@ def run_nsga2(params, loads, evaluator=None, pop_size=40, n_gen=30,
         all_evaluated, n_evals, eval_mode
     """
     log = log or (lambda m: None)
-    from core import tcvn
-    tcvn.apply_design_capacities(params)   # [Po]/[Ct] -> Rc,d/Rt,d (Điều 7.1.11) nếu có Rc,k
+    from core import lrfd
+    # Áp CƠ SỞ THIẾT KẾ (constants.DESIGN_BASIS): TCVN 11823 (LRFD) đặt P_LIMIT=φ·Rn
+    # + trả TẢI CÓ HỆ SỐ (demand); TCVN 10304 đặt Rc,d và giữ tải nguyên. Xem core/lrfd.py.
+    params, loads = lrfd.apply_design_basis(params, loads)
     rng = np.random.default_rng(seed)
     params['_secondary'] = secondary   # 'compact' (footprint) | 'pmax'
 

@@ -21,6 +21,18 @@ EPS = 1e-9
 GEOM_TOL = 1e-4
 
 # ============================================================================
+# CƠ SỞ THIẾT KẾ — chọn tiêu chuẩn kiểm toán sức chịu tải cọc
+# ============================================================================
+# 'TCVN11823'  : TCVN 11823:2017 (LRFD) — Σγ·Q ≤ φ·Rn. Đường mặc định (yêu cầu
+#                chủ dự án 2026-06-29, ADR-008). Khi CHƯA khai báo tham số LRFD
+#                (R_N, load_type/LRFD_ENABLE) thì hành xử như nhập tay (γ=1, P_LIMIT
+#                = [Po] nhập) — KHÔNG âm thầm đổi kết quả; báo cáo ghi rõ trạng thái.
+# 'TCVN10304'  : TCVN 10304:2014 (sức chịu tải cho phép Rc,d) — đường cũ, dùng để
+#                đối chiếu/hồi quy. Lõi tính theo core/tcvn.py.
+# Điều phối qua core.lrfd.apply_design_basis(); có thể ghi đè bằng params['DESIGN_BASIS'].
+DESIGN_BASIS = 'TCVN11823'
+
+# ============================================================================
 # Ràng buộc MỞ RỘNG ngoài đề bài (R1-R6). Tạm tắt theo yêu cầu.
 # ============================================================================
 ENABLE_LATERAL_CHECK = False    # R7: Hmax <= [H]

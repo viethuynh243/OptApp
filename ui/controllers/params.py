@@ -197,8 +197,8 @@ class ParamsController:
             pass
         # Chuẩn hóa [Po]/[Ct] -> Rc,d/Rt,d theo TCVN 10304:2014 Điều 7.1.11 nếu
         # người dùng đã khai báo Rc,k + hệ số tin cậy (qua file/CSV/GUI). Idempotent.
-        from core import tcvn
-        tcvn.apply_design_capacities(d)
+        from core import lrfd
+        lrfd.apply_design_basis(d, None)   # đặt P_LIMIT theo cơ sở thiết kế (LRFD φRn / Rc,d)
         return d
 
 
